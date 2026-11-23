@@ -3,300 +3,394 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Панель клуба</title>
+  <meta name="color-scheme" content="dark light">
+  <script>
+    // Тема до первой отрисовки, чтобы не мигал другой фон.
+    try { const th = localStorage.getItem("panel.theme"); if (th === "light" || th === "dark") document.documentElement.dataset.theme = th; } catch { /* приватный режим */ }
+  </script>
+  <title>клуб.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23e4dcff'/%3E%3Cstop offset='1' stop-color='%23ffc9b6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='16' fill='url(%23g)'/%3E%3Ccircle cx='21' cy='20' r='2.6' fill='%230b0a1a'/%3E%3C/svg%3E">
+  <link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/unbounded-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <script src="i18n.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand" data-i18n="brand">Панель клуба</div>
-    <nav class="tabs">
-      <a class="tab" href="#machines" data-view="machines" data-i18n="tabMachines">Рабочие станции</a>
-      <a class="tab" href="#library" data-view="library" data-i18n="tabLibrary">Библиотека игр</a>
-      <a class="tab" href="#images" data-view="images" data-i18n="tabImages">Образы Windows</a>
-      <a class="tab" href="#network" data-view="network" data-i18n="tabNetwork">Сеть</a>
-    </nav>
-    <div class="topbar-right">
-      <select id="lang" aria-label="Language">
-        <option value="ru">RU</option>
-        <option value="uz">UZ</option>
-        <option value="en">EN</option>
-      </select>
-      <button id="logout" class="ghost" data-i18n="logout" hidden>Выйти</button>
-    </div>
-  </header>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-hall" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="7" height="6" rx="2"/><rect x="13.5" y="4.5" width="7" height="6" rx="2"/><rect x="3.5" y="13.5" width="7" height="6" rx="2"/><rect x="13.5" y="13.5" width="7" height="6" rx="2"/></symbol>
+      <symbol id="i-games" viewBox="0 0 24 24"><path d="M12 3.5 21 8l-9 4.5L3 8l9-4.5Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16 9 4.5 9-4.5"/></symbol>
+      <symbol id="i-windows" viewBox="0 0 24 24"><path d="M4 6.2 10.5 5.3v6.2H4zM12.5 5 20 4v7.5h-7.5zM4 12.5h6.5v6.2L4 17.8zM12.5 12.5H20V20l-7.5-1z"/></symbol>
+      <symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="2.5"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/><path d="M12 8v4M7.2 16.6 12 12l4.8 4.6"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 20h18L12 4Z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8h.01"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="i-reimage" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10Z"/></symbol>
+      <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" stroke="none"/></symbol>
+    </defs>
+  </svg>
 
-  <main>
-    <div id="dhcp-alert" class="alert" role="alert" hidden></div>
+  <div class="scene" aria-hidden="true">
+    <div class="bloom b1"></div><div class="bloom b2"></div><div class="bloom b3"></div><div class="bloom b4"></div><div class="bloom b5"></div>
+    <svg class="rings" width="1440" height="1120" viewBox="0 0 1440 1120" fill="none">
+      <circle cx="1180" cy="140" r="220" stroke="rgba(255,255,255,0.07)"/>
+      <circle cx="1180" cy="140" r="380" stroke="rgba(255,255,255,0.05)"/>
+      <circle cx="1180" cy="140" r="540" stroke="rgba(255,255,255,0.035)"/>
+      <circle cx="1180" cy="140" r="700" stroke="rgba(255,255,255,0.025)"/>
+    </svg>
+    <svg class="grain"><filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#grain)"/></svg>
+  </div>
 
-    <section id="login" class="card login" hidden>
+  <!-- Вход -->
+  <div id="login" class="auth" hidden>
+    <form id="login-form" class="auth-card glass bright">
+      <div class="brand-mark" aria-hidden="true">к.</div>
       <h1 data-i18n="loginTitle">Вход в панель</h1>
-      <p class="muted" data-i18n="loginHint">Токен администратора из настроек сервера (Panel:AdminToken).</p>
-      <form id="login-form">
-        <input id="token" type="password" autocomplete="current-password" required>
-        <button type="submit" data-i18n="loginButton">Войти</button>
-      </form>
-      <p id="login-error" class="error" hidden></p>
-    </section>
-
-    <section id="machines" hidden>
-      <div class="screen-head">
-        <h1 data-i18n="tabMachines">Рабочие станции</h1>
-        <div class="summary" id="summary"></div>
-      </div>
-
-      <div id="pending" class="pending" hidden>
-        <h2 data-i18n="pendingTitle">Ждут одобрения</h2>
-        <div id="pending-list" class="pending-list"></div>
-      </div>
-
-      <p id="load-error" class="error" hidden></p>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="colNumber">№</th>
-              <th data-i18n="colName">Имя</th>
-              <th data-i18n="colStatus">Статус</th>
-              <th data-i18n="colIp">IP</th>
-              <th data-i18n="colMac">MAC</th>
-              <th data-i18n="colZone">Зона</th>
-              <th data-i18n="colVolume">Библиотека</th>
-              <th data-i18n="colImage">Windows</th>
-              <th data-i18n="colHelper">Помощник</th>
-              <th data-i18n="colSeen">Связь</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-        <p id="empty" class="muted empty" data-i18n="empty" hidden>Машин пока нет. Установите помощник бездиска на ПК — он появится здесь.</p>
-      </div>
-    </section>
-
-    <section id="library" hidden>
-      <div class="screen-head">
-        <h1 data-i18n="tabLibrary">Библиотека игр</h1>
-        <div class="summary" id="lib-summary"></div>
-      </div>
-      <p id="lib-error" class="error" hidden></p>
-      <p id="lib-disabled" class="notice" data-i18n="libDisabled" hidden></p>
-      <div id="lib-warnings" class="card warnings" hidden>
-        <h2 data-i18n="netWarnings">Предупреждения</h2>
-        <ul id="lib-warning-list"></ul>
-      </div>
-
-      <div class="lib-grid">
-        <form id="lib-publish" class="card lib-card">
-          <h2 data-i18n="libPublishTitle">Новая версия</h2>
-          <p class="muted small" data-i18n="libPublishHint"></p>
-          <div class="publish-row">
-            <label><span data-i18n="imgLabel">Версия</span><input id="lib-label" class="mono" maxlength="40" required></label>
-            <button type="submit" id="lib-publish-button" data-i18n="imgPublish">Опубликовать</button>
-          </div>
-          <p id="lib-publish-error" class="error small" hidden></p>
-        </form>
-        <div class="card lib-card">
-          <h2 data-i18n="libAdoptionTitle">ПК на связи</h2>
-          <div id="lib-adoption"></div>
+      <p data-i18n="loginHint">Токен администратора из настроек сервера (Panel:AdminToken).</p>
+      <label class="with-icon">
+        <svg class="i"><use href="#i-lock"/></svg>
+        <input id="token" class="input" type="password" autocomplete="current-password" required data-i18n-placeholder="tokenPlaceholder" data-i18n-label="tokenPlaceholder">
+      </label>
+      <p id="login-error" class="form-error" hidden></p>
+      <button type="submit" class="btn primary block" id="login-button" data-i18n="loginButton">Войти</button>
+      <div class="auth-foot">
+        <span class="eyebrow" data-i18n="brand">Панель клуба</span>
+        <div>
+        <button type="button" class="icon-btn sm ring" data-theme-btn data-i18n-title="themeToggle"><svg class="i"><use href="#i-auto"/></svg></button>
+        <select class="select" data-lang aria-label="Language">
+          <option value="ru">Русский</option>
+          <option value="uz">O‘zbekcha</option>
+          <option value="en">English</option>
+        </select>
         </div>
       </div>
+    </form>
+  </div>
 
-      <div class="card lib-card lib-master spaced-card">
-        <h2 data-i18n="masterTitle">Мастер-том: правка игр</h2>
-        <p class="muted small" data-i18n="masterHint"></p>
-        <div id="lib-master"></div>
-      </div>
+  <!-- Приложение -->
+  <div id="app" class="shell" hidden>
+    <nav class="rail glass" aria-label="Разделы">
+      <div class="brand-mark" aria-hidden="true">к.</div>
+      <div class="rail-sep" aria-hidden="true"></div>
+      <a class="rail-item" href="#machines" data-view="machines"><svg class="i"><use href="#i-hall"/></svg><span class="tip" data-i18n="navHall">Зал</span><b class="nav-count" id="nav-machines" hidden></b></a>
+      <a class="rail-item" href="#library" data-view="library"><svg class="i"><use href="#i-games"/></svg><span class="tip" data-i18n="navGames">Игры</span><b class="nav-count" id="nav-library" hidden></b></a>
+      <a class="rail-item" href="#images" data-view="images"><svg class="i"><use href="#i-windows"/></svg><span class="tip" data-i18n="navWindows">Windows</span><b class="nav-count" id="nav-images" hidden></b></a>
+      <a class="rail-item" href="#network" data-view="network"><svg class="i"><use href="#i-network"/></svg><span class="tip" data-i18n="navNetwork">Сеть</span><b class="nav-count" id="nav-network" hidden></b></a>
+      <div class="rail-sep" aria-hidden="true"></div>
+      <button type="button" class="icon-btn lang" id="lang" data-i18n-title="language">RU</button>
+      <button type="button" class="icon-btn" data-theme-btn data-i18n-title="themeToggle"><svg class="i"><use href="#i-auto"/></svg></button>
+      <button type="button" class="icon-btn" id="logout" data-i18n-title="logout"><svg class="i"><use href="#i-logout"/></svg></button>
+    </nav>
 
-      <div id="lib-ops" class="card lib-ops" hidden>
-        <h2 data-i18n="libOpsTitle">Выполняется</h2>
-        <div id="lib-op-list"></div>
-      </div>
-
-      <div class="table-wrap spaced">
-        <h2 class="table-title" data-i18n="libVersions">Версии библиотеки</h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="imgLabel">Версия</th>
-              <th data-i18n="colStatus">Статус</th>
-              <th data-i18n="libColMachines">ПК</th>
-              <th data-i18n="colEditions">Состав</th>
-              <th data-i18n="libColPublished">Опубликована</th>
-              <th>IQN</th>
-            </tr>
-          </thead>
-          <tbody id="lib-rows"></tbody>
-        </table>
-        <p id="lib-empty" class="muted empty" data-i18n="libEmpty" hidden></p>
-      </div>
-
-      <div class="table-wrap">
-        <h2 class="table-title" data-i18n="libHistory">Журнал операций</h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="libColWhen">Когда</th>
-              <th data-i18n="libColOperation">Операция</th>
-              <th data-i18n="imgLabel">Версия</th>
-              <th data-i18n="colStatus">Статус</th>
-              <th data-i18n="libColAttempts">Попытки</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="lib-history"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="images" hidden>
-      <div class="screen-head">
-        <h1 data-i18n="tabImages">Образы Windows</h1>
-        <div class="summary" id="img-summary"></div>
-      </div>
-      <p id="img-error" class="error" hidden></p>
-      <p id="img-disabled" class="notice" data-i18n="imgDisabled" hidden></p>
-      <div id="img-warnings" class="card warnings" hidden>
-        <h2 data-i18n="netWarnings">Предупреждения</h2>
-        <ul id="img-warning-list"></ul>
-      </div>
-
-      <div class="card boot-files">
-        <h2 data-i18n="bfTitle">Файлы загрузки по сети</h2>
-        <p class="muted small" data-i18n="bfHint"></p>
-        <p id="bf-no-tftp" class="muted small" data-i18n="bfNoTftp" hidden></p>
-        <div class="table-wrap inner">
-          <table>
-            <thead>
-              <tr>
-                <th data-i18n="bfFile">Файл</th>
-                <th data-i18n="bfWhere">Где</th>
-                <th data-i18n="colStatus">Статус</th>
-                <th data-i18n="bfSignedBy">Подпись</th>
-                <th data-i18n="bfVersion">Версия</th>
-                <th data-i18n="colSha">sha256</th>
-              </tr>
-            </thead>
-            <tbody id="bf-rows"></tbody>
-          </table>
+    <div class="main">
+      <header class="pagebar">
+        <div>
+          <div class="eyebrow" id="page-eyebrow"></div>
+          <h1 id="page-title"></h1>
         </div>
-      </div>
-
-      <div class="card incoming">
-        <h2 data-i18n="imgIncoming">Новые файлы</h2>
-        <p id="img-incoming-empty" class="muted" data-i18n="imgIncomingEmpty" hidden></p>
-        <div id="img-incoming" class="incoming-list"></div>
-      </div>
-
-      <div class="table-wrap">
-        <h2 class="table-title" data-i18n="imgList">Версии образа</h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="imgLabel">Версия</th>
-              <th data-i18n="colStatus">Статус</th>
-              <th data-i18n="colEditions">Состав</th>
-              <th data-i18n="colSize">Размер</th>
-              <th data-i18n="colSha">sha256</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="img-rows"></tbody>
-        </table>
-        <p id="img-empty" class="muted empty" data-i18n="imgEmpty" hidden></p>
-      </div>
-    </section>
-
-    <section id="network" hidden>
-      <div class="screen-head">
-        <h1 data-i18n="tabNetwork">Сеть</h1>
-        <div class="summary" id="net-summary"></div>
-      </div>
-
-      <p id="net-error" class="error" hidden></p>
-
-      <div id="net-warnings" class="card warnings" hidden>
-        <h2 data-i18n="netWarnings">Предупреждения</h2>
-        <ul id="net-warning-list"></ul>
-      </div>
-
-      <div class="net-grid">
-        <form id="net-form" class="card net-form" novalidate>
-          <h2 data-i18n="netPlan">Адресный план</h2>
-          <p id="net-unconfigured" class="notice" data-i18n="netUnconfigured" hidden></p>
-          <div class="fields">
-            <label><span data-i18n="fSubnet">Подсеть</span><input name="subnet" class="mono" required></label>
-            <label><span data-i18n="fInterface">Интерфейс</span><input name="interface" class="mono" list="net-interfaces" required></label>
-            <label><span data-i18n="fDhcpServer">DHCP</span><input name="dhcpServer" class="mono" required></label>
-            <label><span data-i18n="fGateway">Шлюз</span><input name="gateway" class="mono" required></label>
-            <label class="wide"><span data-i18n="fDns">DNS</span><input name="dnsServers" class="mono" required></label>
-            <label><span data-i18n="fPoolStart">Пул с</span><input name="poolStart" class="mono" required></label>
-            <label><span data-i18n="fPoolEnd">Пул по</span><input name="poolEnd" class="mono" required></label>
-            <label><span data-i18n="fReservedStart">IP места №1</span><input name="reservedStart" class="mono" required></label>
-            <label><span data-i18n="fLeaseMin">Аренда, мин</span><input name="leaseTimeSec" type="number" min="5" max="10080" required></label>
-            <label><span data-i18n="fKeaSubnetId">ID подсети</span><input name="keaSubnetId" type="number" min="1" required></label>
-          </div>
-          <datalist id="net-interfaces"></datalist>
-          <p id="net-capacity" class="muted"></p>
-          <p id="net-form-error" class="error" hidden></p>
-          <p id="net-saved" class="ok-text" data-i18n="netSaved" hidden></p>
-          <div class="form-actions">
-            <button type="button" class="ghost" id="net-download" data-i18n="netDownload">Скачать kea-dhcp4.conf</button>
-            <button type="submit" id="net-save" data-i18n="save">Сохранить</button>
-          </div>
-          <p class="muted small" data-i18n="netDownloadHint"></p>
-        </form>
-
-        <div class="table-wrap">
-          <h2 class="table-title" data-i18n="netReservations">Резервации DHCP</h2>
-          <table>
-            <thead>
-              <tr>
-                <th data-i18n="colNumber">№</th>
-                <th data-i18n="colName">Имя</th>
-                <th data-i18n="colMac">MAC</th>
-                <th data-i18n="colIp">IP</th>
-                <th data-i18n="colHostname">Имя хоста</th>
-                <th data-i18n="colProblem">Проблема</th>
-              </tr>
-            </thead>
-            <tbody id="net-rows"></tbody>
-          </table>
+        <div class="pagebar-right">
+          <span class="live" id="live"><i></i><span id="live-text"></span></span>
+          <button type="button" class="icon-btn ring" id="refresh" data-i18n-title="refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
         </div>
-      </div>
-    </section>
-  </main>
+      </header>
 
-  <dialog id="edit">
-    <form id="edit-form" method="dialog">
-      <h2 data-i18n="editTitle">Машина</h2>
-      <label><span data-i18n="colNumber">№</span><input id="edit-number" type="number" min="1" max="9999" required></label>
-      <label><span data-i18n="colName">Имя</span><input id="edit-name" maxlength="64" required></label>
-      <label><span data-i18n="colZone">Зона</span><select id="edit-zone"></select></label>
-      <label class="check"><input id="edit-maintenance" type="checkbox"><span data-i18n="maintenance">Обслуживание</span></label>
-      <p id="edit-error" class="error" hidden></p>
-      <div class="dialog-actions">
-        <button type="button" class="ghost" id="edit-cancel" data-i18n="cancel">Отмена</button>
-        <button type="submit" id="edit-save" data-i18n="save">Сохранить</button>
+      <div id="dhcp-alert" class="banner bad" role="alert" hidden></div>
+
+      <!-- Зал -->
+      <section id="machines" class="view" hidden>
+        <p id="load-error" class="banner bad" hidden></p>
+        <div class="row">
+          <div class="hall glass panel lg">
+            <div class="hall-head">
+              <span class="eyebrow" id="hall-shift"></span>
+              <span class="caps" id="hall-zones"></span>
+            </div>
+            <div class="hero">
+              <div class="hero-num"><b id="hero-n">0</b><span id="hero-of">/0</span></div>
+              <div class="hero-text">
+                <h2 data-i18n="heroTitle">мест на связи</h2>
+                <p id="hero-line"></p>
+              </div>
+            </div>
+            <div id="floor" class="floor"></div>
+            <div id="empty" class="empty-state" hidden>
+              <div class="brand-mark" aria-hidden="true">к.</div>
+              <p data-i18n="empty">Машин пока нет. Установите помощник бездиска на ПК — он появится здесь.</p>
+            </div>
+            <div id="m-nomatch" class="empty-state compact" hidden><p data-i18n="noMatches">Ничего не найдено</p></div>
+            <div class="ornament" id="ornament" hidden>
+              <div class="ornament-bar glass dock">
+                <div class="seg" id="m-filter" role="group"></div>
+                <span class="ornament-sep" aria-hidden="true"></span>
+                <label class="ornament-search">
+                  <svg class="i"><use href="#i-search"/></svg>
+                  <input id="m-search" type="search" autocomplete="off" data-i18n-placeholder="searchShort" data-i18n-label="searchMachines">
+                </label>
+                <button type="button" class="btn peach" id="m-admit" hidden><span class="txt" data-i18n="admitNew">Впустить новых</span><span class="count" id="m-admit-n"></span></button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="inspector glass bright panel" id="inspector" aria-live="polite"></aside>
+        </div>
+
+        <div class="row after-hall">
+          <section class="glass panel grow-1" id="w-games"></section>
+          <section class="glass panel grow-1" id="w-windows"></section>
+          <section class="glass warm panel fixed-side" id="pending" hidden></section>
+        </div>
+      </section>
+
+      <!-- Игры -->
+      <section id="library" class="view" hidden>
+        <p id="lib-error" class="banner bad" hidden></p>
+        <p id="lib-disabled" class="banner warn" data-i18n="libDisabled" hidden></p>
+        <div id="lib-warnings" class="glass rose panel" hidden>
+          <div class="panel-head"><h2 data-i18n="netWarnings">Предупреждения</h2></div>
+          <ul id="lib-warning-list" class="warn-list"></ul>
+        </div>
+
+        <div class="row">
+          <div class="glass bright panel grow-1" id="lib-summary"></div>
+          <div class="glass panel grow-1">
+            <div class="panel-head"><span class="eyebrow" data-i18n="libAdoptionTitle">ПК на связи</span></div>
+            <div id="lib-adoption" class="adoption"></div>
+          </div>
+          <form id="lib-publish" class="glass panel fixed-side">
+            <span class="eyebrow" data-i18n="libPublishTitle">Новая версия</span>
+            <p class="lead" data-i18n="libPublishHint"></p>
+            <label class="field"><span data-i18n="imgLabel">Версия</span><input id="lib-label" class="input mono" maxlength="40" required></label>
+            <p id="lib-publish-error" class="form-error" hidden></p>
+            <button type="submit" class="btn lilac block push-down" id="lib-publish-button"><svg class="i"><use href="#i-upload"/></svg><span data-i18n="imgPublish">Опубликовать</span></button>
+          </form>
+        </div>
+
+        <div class="glass panel" id="lib-timeline-card" hidden>
+          <div class="panel-head"><h2 data-i18n="tlGames">Лента сборок</h2><span class="small muted" data-i18n="tlHint"></span></div>
+          <div id="lib-timeline" class="timeline"></div>
+        </div>
+
+        <div class="glass panel" id="lib-master-card">
+          <div class="panel-head"><h2 data-i18n="masterTitle">Мастер-том: правка игр</h2></div>
+          <p class="panel-note" data-i18n="masterHint"></p>
+          <div id="lib-master"></div>
+        </div>
+
+        <div id="lib-ops" class="glass cool panel" hidden>
+          <div class="panel-head"><h2 data-i18n="libOpsTitle">Выполняется</h2></div>
+          <div id="lib-op-list" class="row"></div>
+        </div>
+
+        <div class="glass panel flush">
+          <div class="panel-head"><h2 data-i18n="libVersions">Версии библиотеки</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="imgLabel">Версия</th><th data-i18n="colStatus">Статус</th><th data-i18n="libColMachines">ПК</th><th data-i18n="colEditions">Состав</th><th data-i18n="libColPublished">Опубликована</th><th>IQN</th></tr></thead>
+              <tbody id="lib-rows"></tbody>
+            </table>
+          </div>
+          <p id="lib-empty" class="empty-state compact" data-i18n="libEmpty" hidden></p>
+        </div>
+
+        <div class="glass panel flush">
+          <div class="panel-head"><h2 data-i18n="libHistory">Журнал операций</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="libColWhen">Когда</th><th data-i18n="libColOperation">Операция</th><th data-i18n="imgLabel">Версия</th><th data-i18n="colStatus">Статус</th><th data-i18n="libColAttempts">Попытки</th><th></th></tr></thead>
+              <tbody id="lib-history"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Windows -->
+      <section id="images" class="view" hidden>
+        <p id="img-error" class="banner bad" hidden></p>
+        <p id="img-disabled" class="banner warn" data-i18n="imgDisabled" hidden></p>
+        <div id="img-warnings" class="glass rose panel" hidden>
+          <div class="panel-head"><h2 data-i18n="netWarnings">Предупреждения</h2></div>
+          <ul id="img-warning-list" class="warn-list"></ul>
+        </div>
+
+        <div class="row">
+          <div class="glass bright panel grow-1" id="img-summary"></div>
+          <div class="glass panel grow-1">
+            <div class="panel-head"><span class="eyebrow" data-i18n="imgIncoming">Новые файлы</span></div>
+            <div id="img-incoming-empty" class="dropzone" hidden>
+              <svg class="i"><use href="#i-file"/></svg>
+              <p class="small" data-i18n="imgIncomingEmpty"></p>
+            </div>
+            <div id="img-incoming" class="incoming-list"></div>
+          </div>
+        </div>
+
+        <div class="glass panel" id="img-timeline-card" hidden>
+          <div class="panel-head"><h2 data-i18n="tlImages">Лента образов</h2><span class="small muted" data-i18n="tlHint"></span></div>
+          <div id="img-timeline" class="timeline"></div>
+        </div>
+
+        <div class="glass panel flush">
+          <div class="panel-head"><h2 data-i18n="imgList">Версии образа</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="imgLabel">Версия</th><th data-i18n="colStatus">Статус</th><th data-i18n="colEditions">Состав</th><th data-i18n="colSize">Размер</th><th data-i18n="colSha">sha256</th><th></th></tr></thead>
+              <tbody id="img-rows"></tbody>
+            </table>
+          </div>
+          <p id="img-empty" class="empty-state compact" data-i18n="imgEmpty" hidden></p>
+        </div>
+
+        <div class="glass panel flush">
+          <div class="panel-head"><h2 data-i18n="bfTitle">Файлы загрузки по сети</h2><span id="bf-state"></span></div>
+          <p class="panel-note" data-i18n="bfHint"></p>
+          <p id="bf-no-tftp" class="panel-note" data-i18n="bfNoTftp" hidden></p>
+          <div id="bf-chain" class="chain" aria-label="Цепочка загрузки"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="bfFile">Файл</th><th data-i18n="bfWhere">Где</th><th data-i18n="colStatus">Статус</th><th data-i18n="bfSignedBy">Подпись</th><th data-i18n="bfVersion">Версия</th><th data-i18n="colSha">sha256</th></tr></thead>
+              <tbody id="bf-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Сеть -->
+      <section id="network" class="view" hidden>
+        <p id="net-error" class="banner bad" hidden></p>
+        <div class="status-row" id="net-summary"></div>
+        <div id="net-warnings" class="glass rose panel" hidden>
+          <div class="panel-head"><h2 data-i18n="netWarnings">Предупреждения</h2></div>
+          <ul id="net-warning-list" class="warn-list"></ul>
+        </div>
+
+        <div class="glass bright panel" id="net-hero" hidden></div>
+
+        <div class="row top">
+          <form id="net-form" class="glass panel net-form" novalidate>
+            <div class="panel-head"><h2 data-i18n="netPlan">Адресный план</h2></div>
+            <p id="net-unconfigured" class="banner warn" data-i18n="netUnconfigured" hidden></p>
+            <div class="group-title" data-i18n="netGroupSubnet">Подсеть и сервер</div>
+            <div class="fields">
+              <label class="field"><span data-i18n="fSubnet">Подсеть</span><input name="subnet" class="input mono" required></label>
+              <label class="field"><span data-i18n="fInterface">Интерфейс</span><input name="interface" class="input mono" list="net-interfaces" required></label>
+              <label class="field"><span data-i18n="fDhcpServer">DHCP</span><input name="dhcpServer" class="input mono" required></label>
+              <label class="field"><span data-i18n="fGateway">Шлюз</span><input name="gateway" class="input mono" required></label>
+              <label class="field wide"><span data-i18n="fDns">DNS</span><input name="dnsServers" class="input mono" required></label>
+            </div>
+            <div class="group-title" data-i18n="netGroupPools">Адреса и аренда</div>
+            <div class="fields">
+              <label class="field"><span data-i18n="fPoolStart">Пул с</span><input name="poolStart" class="input mono" required></label>
+              <label class="field"><span data-i18n="fPoolEnd">Пул по</span><input name="poolEnd" class="input mono" required></label>
+              <label class="field"><span data-i18n="fReservedStart">IP места №1</span><input name="reservedStart" class="input mono" required></label>
+              <label class="field"><span data-i18n="fLeaseMin">Аренда, мин</span><input name="leaseTimeSec" class="input" type="number" min="5" max="10080" required></label>
+              <label class="field"><span data-i18n="fKeaSubnetId">ID подсети</span><input name="keaSubnetId" class="input" type="number" min="1" required></label>
+            </div>
+            <datalist id="net-interfaces"></datalist>
+            <p id="net-capacity" class="hint"></p>
+            <p id="net-form-error" class="form-error" hidden></p>
+            <p id="net-saved" class="form-ok" hidden><svg class="i sm"><use href="#i-check"/></svg><span data-i18n="netSaved"></span></p>
+            <div class="form-actions">
+              <button type="button" class="btn" id="net-download"><svg class="i"><use href="#i-download"/></svg><span data-i18n="netDownload">Скачать kea-dhcp4.conf</span></button>
+              <button type="submit" class="btn primary" id="net-save" data-i18n="save">Сохранить</button>
+            </div>
+            <p class="panel-note" data-i18n="netDownloadHint"></p>
+          </form>
+
+          <div class="glass panel flush grow-1">
+            <div class="panel-head"><h2 data-i18n="netReservations">Резервации DHCP</h2><span class="chip" id="net-res-count"></span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th data-i18n="colNumber">№</th><th data-i18n="colName">Имя</th><th data-i18n="colMac">MAC</th><th data-i18n="colIp">IP</th><th data-i18n="colHostname">Имя хоста</th><th data-i18n="colProblem">Проблема</th></tr></thead>
+                <tbody id="net-rows"></tbody>
+              </table>
+            </div>
+            <p id="net-empty" class="empty-state compact" data-i18n="netNoReservations" hidden></p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Место -->
+  <dialog id="edit" class="modal">
+    <form id="edit-form" method="dialog" class="modal-card glass bright">
+      <div class="modal-head">
+        <div><span class="eyebrow" id="edit-sub"></span><h2 data-i18n="editTitle">Машина</h2></div>
+        <button type="button" class="icon-btn sm ring" data-close data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="fields">
+          <label class="field"><span data-i18n="colNumber">№</span><input id="edit-number" class="input" type="number" min="1" max="9999" required></label>
+          <label class="field"><span data-i18n="colZone">Зона</span><select id="edit-zone" class="select"></select></label>
+          <label class="field wide"><span data-i18n="colName">Имя</span><input id="edit-name" class="input" maxlength="64" required></label>
+        </div>
+        <label class="switch-row">
+          <span><b data-i18n="maintenance">Обслуживание</b><span class="small muted" data-i18n="maintenanceHint"></span></span>
+          <input id="edit-maintenance" type="checkbox" class="switch">
+        </label>
+        <p id="edit-error" class="form-error" hidden></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Отмена</button>
+        <button type="submit" class="btn primary" id="edit-save" data-i18n="save">Сохранить</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="reimage">
-    <form id="reimage-form" method="dialog">
-      <h2><span data-i18n="reimageTitle">Перезаливка Windows</span>: <span id="reimage-name"></span></h2>
-      <p class="muted small" data-i18n="reimageHint"></p>
-      <label><span data-i18n="reimageImage">Образ</span><select id="reimage-image"></select></label>
-      <label class="check"><input id="reimage-new-disk" type="checkbox"><span data-i18n="reimageAllowNewDisk"></span></label>
-      <p class="muted small" data-i18n="reimageAllowNewDiskHint"></p>
-      <p id="reimage-error" class="error" hidden></p>
-      <div class="dialog-actions">
-        <button type="button" class="ghost" id="reimage-cancel" data-i18n="cancel">Отмена</button>
-        <button type="submit" class="danger-solid" id="reimage-start" data-i18n="reimageStart">Перезалить</button>
+  <!-- Перезаливка -->
+  <dialog id="reimage" class="modal">
+    <form id="reimage-form" method="dialog" class="modal-card glass bright">
+      <div class="modal-head">
+        <div><span class="eyebrow" id="reimage-name"></span><h2 data-i18n="reimageTitle">Перезаливка Windows</h2></div>
+        <button type="button" class="icon-btn sm ring" data-close data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" data-i18n="reimageHint"></p>
+        <label class="field"><span data-i18n="reimageImage">Образ</span><select id="reimage-image" class="select"></select></label>
+        <label class="switch-row">
+          <span><b data-i18n="reimageAllowNewDisk"></b><span class="small muted" data-i18n="reimageAllowNewDiskHint"></span></span>
+          <input id="reimage-new-disk" type="checkbox" class="switch">
+        </label>
+        <p id="reimage-error" class="form-error" hidden></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Отмена</button>
+        <button type="submit" class="btn danger" id="reimage-start"><svg class="i"><use href="#i-reimage"/></svg><span data-i18n="reimageStart">Перезалить</span></button>
       </div>
     </form>
   </dialog>
+
+  <!-- Подтверждение -->
+  <dialog id="confirm" class="modal narrow">
+    <form method="dialog" class="modal-card glass bright">
+      <div class="modal-body confirm-body">
+        <span class="sign" id="confirm-sign"><svg class="i"><use href="#i-alert"/></svg></span>
+        <h2 class="confirm-title" id="confirm-title"></h2>
+        <p id="confirm-text"></p>
+      </div>
+      <div class="modal-foot split">
+        <button type="button" class="btn ghost" id="confirm-no" data-i18n="cancel">Отмена</button>
+        <button type="submit" class="btn primary" id="confirm-yes"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 </body>
 </html>
