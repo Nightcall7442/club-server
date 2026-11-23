@@ -10,6 +10,7 @@
   const $ = (id) => document.getElementById(id);
 
   let lang = safeGet(localStorage, "panel.lang") || "ru";
+  let theme = safeGet(localStorage, "panel.theme") || "auto";
   let token = safeGet(sessionStorage, "panel.token");
   let data = null;
   let dataJson = "";
@@ -61,6 +62,68 @@
     $("lang").textContent = lang.toUpperCase();
     document.title = t("brandShort");
     renderHeader();
+    renderLive();
+    applyTheme();
+    snapLater();
+  }
+
+  // Тема: как в системе → светлая → тёмная. Выбор помнится в браузере.
+  function applyTheme() {
+    if (theme === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+      btn.replaceChildren(icon({ auto: "auto", light: "sun", dark: "moon" }[theme] || "auto"));
+      btn.title = `${t("themeToggle")}: ${t(`theme_${theme}`)}`;
+      btn.setAttribute("aria-label", btn.title);
+    });
+  }
+
+  function cycleTheme() {
+    theme = { auto: "light", light: "dark", dark: "auto" }[theme] || "auto";
+    safeSet(localStorage, "panel.theme", theme === "auto" ? null : theme);
+    applyTheme();
+  }
+
+  // Мерцающие заготовки, пока не пришли первые данные: без «0/0» и пустых таблиц.
+  function sk(cls, width) {
+    return el("span", { class: `skel ${cls || ""}`.trim(), style: width ? { width } : null, "aria-hidden": "true" });
+  }
+
+  function skelRows(rows, cols) {
+    const widths = ["72%", "48%", "64%", "40%", "56%", "36%"];
+    return Array.from({ length: rows }, (_, r) => el("tr", { class: "skel-row", "aria-hidden": "true" },
+      Array.from({ length: cols }, (_, c) => el("td", {}, sk("line", widths[(r + c) % widths.length])))));
+  }
+
+  function skelCard(lines) {
+    return [sk("line", "96px"), sk("big", "64%"), el("div", { class: "skel-stack" }, Array.from({ length: lines }, (_, i) => sk("line", i % 2 ? "56%" : "88%")))];
+  }
+
+  function renderSkeletons() {
+    if (!data) {
+      $("hero-n").replaceChildren(sk("num"));
+      $("hero-of").textContent = "";
+      $("hero-line").replaceChildren(sk("line", "320px"));
+      $("floor").replaceChildren(el("div", { class: "zone", "data-n": "8" },
+        el("div", { class: "zone-head" }, sk("line", "96px"), sk("line", "48px")),
+        el("div", { class: "tiles" }, Array.from({ length: 8 }, () => sk("tile-skel")))));
+      layoutZones();
+      $("inspector").replaceChildren(el("div", { class: "skel-stack" }, sk("line", "40%"), sk("num"), sk("big", "70%"), sk("line", "90%"), sk("line", "60%")));
+      $("w-games").replaceChildren(...skelCard(2));
+      $("w-windows").replaceChildren(...skelCard(2));
+    }
+    if (!lib) {
+      $("lib-summary").replaceChildren(...skelCard(3));
+      $("lib-adoption").replaceChildren(sk("big", "40%"), el("div", { class: "skel-stack" }, sk("line", "100%"), sk("line", "70%"), sk("line", "60%")));
+      $("lib-rows").replaceChildren(...skelRows(3, 6));
+      $("lib-history").replaceChildren(...skelRows(3, 6));
+    }
+    if (!imgs) {
+      $("img-summary").replaceChildren(...skelCard(3));
+      $("img-rows").replaceChildren(...skelRows(3, 6));
+      $("bf-rows").replaceChildren(...skelRows(3, 6));
+    }
+    if (!net) $("net-rows").replaceChildren(...skelRows(4, 6));
   }
 
   function el(tag, props = {}, ...children) {
@@ -151,7 +214,7 @@
 
   function renderLive() {
     $("live").classList.toggle("stale", lastFail);
-    $("live-text").textContent = lastFail ? t("liveStale") : `${t("liveOk")} · ${clock()}`;
+    $("live-text").textContent = lastFail ? t("liveStale") : lastOk ? `${t("liveOk")} · ${clock()}` : t("liveConnecting");
   }
 
   // ---------- Уведомления и подтверждения ----------
@@ -314,7 +377,7 @@
     const all = seated();
     $("hall-shift").textContent = `${shiftName()} · ${dateLine(new Date())}`;
     $("hall-zones").textContent = t("zonesCount", { n: data.zones.length || 1 });
-    $("hero-n").textContent = data.online;
+    $("hero-n").replaceChildren(String(data.online));
     $("hero-of").textContent = `/${all.length}`;
     // Самое важное — коротко: не больше трёх пунктов по убыванию срочности.
     const silent = all.filter((m) => m.status === "offline" || m.status === "neverSeen").length;
@@ -331,8 +394,10 @@
     $("m-filter").replaceChildren(...Object.keys(FILTERS).map((key) => el("button", {
       type: "button", class: filters.status === key ? "active" : "", "aria-pressed": filters.status === key ? "true" : "false", onclick: () => setFilter(key),
     }, t(`flt_${key}`), el("b", {}, list.filter(FILTERS[key]).length))));
+    $("ornament").hidden = !data;
     $("m-admit").hidden = !data?.pending;
     $("m-admit-n").textContent = data?.pending || "";
+    snapLater();
   }
 
   function matches(m) {
@@ -366,14 +431,79 @@
     $("m-nomatch").hidden = all.length === 0 || all.some(matches);
     const zoneIds = [...new Set([...data.zones.map((z) => z.id), ...all.map((m) => m.zone)])];
     const groups = zoneIds.map((id) => ({ id, machines: all.filter((m) => m.zone === id).sort((a, b) => a.number - b.number) })).filter((g) => g.machines.length);
-    const biggest = Math.max(0, ...groups.map((g) => g.machines.length));
-    $("floor").replaceChildren(...groups.map((g) => {
+      $("floor").replaceChildren(...groups.map((g) => {
       const nums = g.machines.map((m) => m.number);
       const isVip = /vip/i.test(g.id) || /vip/i.test(zoneName(g.id));
-      return el("div", { class: `zone${g.machines.length === biggest && groups.length > 1 ? " wide" : ""}${isVip ? " vip" : ""}` },
+      return el("div", { class: `zone${isVip ? " vip" : ""}`, "data-n": g.machines.length },
         el("div", { class: "zone-head caps" }, el("span", {}, zoneName(g.id)), el("span", { class: "mono" }, `${pad(Math.min(...nums))}–${pad(Math.max(...nums))}`)),
         el("div", { class: "tiles" }, g.machines.map(tile)));
     }));
+    layoutZones();
+  }
+
+  // Колонки зон: компактный прямоугольник (≈ √2n колонок), не шире зала. Плитки — ровно 120 px,
+  // подпись зоны — ровно над своими плитками. На телефоне — во всю ширину, плитки делят её поровну.
+  function layoutZones() {
+    const floor = $("floor");
+    const width = floor.clientWidth;
+    if (!width) return;
+    const phone = matchMedia("(max-width: 860px)").matches;
+    const gap = phone ? 10 : 16;
+    const unit = phone ? 106 : 136;
+    const maxCols = Math.max(1, Math.floor((width + gap) / unit));
+    floor.querySelectorAll(".zone").forEach((zone) => {
+      const n = Number(zone.dataset.n) || 1;
+      const cols = phone ? Math.max(2, maxCols) : Math.min(n, maxCols, Math.max(2, Math.ceil(Math.sqrt(2 * n))));
+      zone.style.setProperty("--cols", cols);
+    });
+  }
+
+  // Ширина от текста почти всегда дробная — край кнопки или плашки ложится между пикселями
+  // и мылится, а всё правее съезжает. После отрисовки округляем такие ширины вверх до целого.
+  const SNAP = ".btn, .chip, .badge, .pill, .seg button, .chain-node, .count, .live, .seat-mini, .op-head > div > *";
+  let snapQueued = false;
+
+  function snapLater() {
+    if (snapQueued) return;
+    snapQueued = true;
+    requestAnimationFrame(() => { snapQueued = false; snapAll(); });
+  }
+
+  function snapAll() {
+    const items = [...document.querySelectorAll(SNAP)].filter((node) => node.offsetParent !== null);
+    for (const node of items) if (node.dataset.snap) { node.style.width = ""; delete node.dataset.snap; }
+    // Колонки таблиц: целые ширины у всех, кроме последней, — ей остаётся целый остаток.
+    const heads = [...document.querySelectorAll("table")].filter((table) => table.offsetParent !== null)
+      .map((table) => [...table.querySelectorAll("thead th")]);
+    for (const row of heads) for (const th of row) th.style.width = "";
+    const headWidths = heads.map((row) => row.map((th) => th.getBoundingClientRect().width));
+    heads.forEach((row, r) => row.slice(0, -1).forEach((th, c) => { th.style.width = `${Math.round(headWidths[r][c])}px`; }));
+    const widths = items.map((node) => {
+      const cs = getComputedStyle(node);
+      return cs.flexBasis !== "auto" || cs.flexGrow !== "0" ? null : node.getBoundingClientRect().width;
+    });
+    items.forEach((node, i) => {
+      const w = widths[i];
+      if (w && Math.abs(w - Math.round(w)) > 0.01) {
+        node.style.width = `${Math.ceil(w)}px`;
+        node.dataset.snap = "1";
+      }
+    });
+    settleOrnament();
+  }
+
+  // Панель фильтров стоит по центру зала: подгоняем ширину, чтобы её край попадал в целый пиксель.
+  function settleOrnament() {
+    const bar = document.querySelector(".ornament-bar");
+    const hall = document.querySelector(".hall");
+    bar.style.width = "";
+    const r = hall.getBoundingClientRect();
+    if (!r.width) return;
+    let w = Math.ceil(bar.getBoundingClientRect().width);
+    const left = r.left + (r.width - w) / 2;
+    const frac = left - Math.floor(left);
+    if (frac > 0.001) w += Math.round(frac * 2 * 1000) / 1000;
+    bar.style.width = `${w}px`;
   }
 
   function renderInspector() {
@@ -399,17 +529,17 @@
     box.replaceChildren(...[
       el("span", { class: "halo", "aria-hidden": "true" }),
       el("div", { class: "insp-head" },
-        el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+        el("div", {},
           el("span", { class: "eyebrow" }, `${t("seat")} · ${zoneName(m.zone)}`),
           el("span", { class: "insp-no" }, pad(m.number))),
         el("span", { class: `pill${s.hollow ? " hollow" : ""}` }, s.short)),
-      el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+      el("div", { class: "insp-title" },
         el("span", { class: "insp-name" }, m.name),
         el("p", { class: "lead" }, s.story)),
       progress,
       el("dl", { class: "props" },
         prop(t("inspLib"), volumeBadges(m.volume)),
-        prop(t("inspWin"), el("div", { class: "cell-stack", style: { alignItems: "flex-end" } }, orDash(m.imageVersion, true),
+        prop(t("inspWin"), el("div", { class: "cell-stack" }, orDash(m.imageVersion, true),
           m.masterState ? badge(m.masterState === "failed" ? "bad" : "warn", t("masterBadge", { letter: "M" }), t(`mm_${m.masterState}`)) : null,
           r && !progress ? badge(REIMAGE[r.state] || "idle", reimageText(r), r.message || "") : null)),
         prop("Secure Boot", sbBadges(m.secureBoot)),
@@ -432,11 +562,12 @@
     box.hidden = pending.length === 0;
     if (!pending.length) return;
     box.replaceChildren(
-      el("span", { class: "eyebrow", style: { color: "var(--peach-2)" } }, t("doorEyebrow")),
+      el("span", { class: "eyebrow warm" }, t("doorEyebrow")),
       el("div", { class: "door-title" }, t("doorTitle", { n: pending.length })),
-      el("div", { class: "door-list", style: { marginTop: "auto" } }, pending.map((m) => el("div", {},
+      el("div", { class: "door-list push-down" }, pending.map((m) => el("div", {},
         el("div", { class: "who" }, el("b", {}, m.hostname),
-          el("span", {}, m.macAddresses.length ? `${m.macAddresses[0]} · ` : "", m.ipAddress ? `${m.ipAddress} · ` : "", ago(m.registeredAt))),
+          m.macAddresses.length ? el("span", { class: "mono" }, m.macAddresses[0]) : null,
+          el("span", {}, m.ipAddress ? `${m.ipAddress} · ` : "", ago(m.registeredAt))),
         button(t("admit"), { cls: "peach sm", onclick: () => act(`/machines/${m.id}/approve`, t("approved", { name: m.hostname })) }),
         iconButton("x", t("reject"), async () => {
           if (await ask(t("rejectConfirm", { name: m.hostname }), { danger: true, ok: t("reject") })) act(`/machines/${m.id}/reject`);
@@ -491,6 +622,7 @@
     renderInspector();
     renderPending();
     renderWidgets();
+    snapLater();
   }
 
   // ---------- Сеть ----------
@@ -535,6 +667,7 @@
     $("net-warning-list").replaceChildren(...warningItems(net.warnings));
     $("net-res-count").textContent = net.reservations.length;
     $("net-empty").hidden = net.reservations.length > 0;
+    snapLater();
     $("net-rows").replaceChildren(...net.reservations.map((r) => el("tr", {},
       el("td", {}, el("span", { class: "seat-mini" }, pad(r.seat))),
       el("td", {}, r.name),
@@ -585,10 +718,10 @@
           style: end ? { right: "0" } : { left: `${((n - b) / size) * 100}%` },
         }, short(n))))),
       el("div", { class: "addr-legend" },
-        el("span", {}, el("i", { style: { background: "var(--info)" } }), t("lgInfra")),
-        el("span", {}, el("i", { style: { background: "rgba(196, 181, 255, 0.5)" } }), t("lgSeats")),
-        el("span", {}, el("i", { style: { background: "var(--ok)" } }), t("lgUsed")),
-        el("span", {}, el("i", { style: { background: "rgba(255, 181, 154, 0.5)" } }), t("lgPool"))));
+        el("span", {}, el("i", { class: "lg-infra" }), t("lgInfra")),
+        el("span", {}, el("i", { class: "lg-seats" }), t("lgSeats")),
+        el("span", {}, el("i", { class: "lg-used" }), t("lgUsed")),
+        el("span", {}, el("i", { class: "lg-pool" }), t("lgPool"))));
   }
 
   function renderCapacity() {
@@ -819,11 +952,11 @@
     const parts = Object.keys(tones).filter((key) => a[key] > 0);
     const segs = parts.flatMap((key) => Array.from({ length: a[key] }, () => tones[key]));
     const pct = Math.round((100 * (a.onCurrent || 0)) / a.online);
-    $("lib-adoption").replaceChildren(el("div", { style: { display: "flex", flexDirection: "column", gap: "20px" } },
-      el("div", { style: { display: "flex", alignItems: "baseline", gap: "12px" } }, el("span", { class: "big" }, `${pct}%`), el("span", { class: "muted" }, t("ad_onCurrent"))),
+    $("lib-adoption").replaceChildren(
+      el("div", { class: "adoption-head" }, el("span", { class: "big" }, `${pct}%`), el("span", { class: "muted" }, t("ad_onCurrent"))),
       el("div", { class: "seg-bar" }, segs.map((k) => el("span", { class: `tone-${k}` }))),
       el("div", { class: "legend" },
-        parts.map((key) => el("div", { class: `tone-${tones[key]}` }, el("i"), el("span", {}, t(`ad_${key}`)), el("b", {}, a[key]))))));
+        parts.map((key) => el("div", { class: `tone-${tones[key]}` }, el("i"), el("span", {}, t(`ad_${key}`)), el("b", {}, a[key])))));
   }
 
   function stepper(steps, at, failed) {
@@ -838,7 +971,7 @@
   function renderOperation(op) {
     const steps = { publish: PUBLISH_STEPS, masterOpen: MASTER_OPEN_STEPS, masterClose: MASTER_CLOSE_STEPS }[op.kind] ?? ["promote"];
     const at = op.status === "done" ? steps.length : Math.max(0, steps.indexOf(op.step ?? steps[0]));
-    return el("div", { class: "op well", style: { flex: "1 1 420px", minWidth: "0", maxWidth: "100%" } },
+    return el("div", { class: "op well" },
       el("div", { class: "op-head" },
         el("div", {}, el("b", {}, t(`op_${op.kind}`)), op.versionLabel ? el("span", { class: "mono" }, op.versionLabel) : null,
           badge(OP_STATUS[op.status] || "idle", t(`os_${op.status}`)), op.attempts > 1 ? el("span", { class: "small muted" }, `#${op.attempts}`) : null,
@@ -937,6 +1070,7 @@
     }
 
     timeline("lib-timeline", "lib-timeline-card", lib.versions, "ls");
+    snapLater();
 
     $("lib-ops").hidden = lib.openOperations.length === 0;
     $("lib-op-list").replaceChildren(...lib.openOperations.map(renderOperation));
@@ -1087,6 +1221,7 @@
 
     renderBootFiles();
     timeline("img-timeline", "img-timeline-card", imgs.images, "is");
+    snapLater();
 
     $("img-empty").hidden = imgs.images.length > 0;
     $("img-rows").replaceChildren(...imgs.images.map((i) => {
@@ -1197,6 +1332,7 @@
       loadSettings(false);
     }
     window.scrollTo(0, 0);
+    snapLater();
     refresh();
   }
 
@@ -1276,6 +1412,7 @@
   function showApp() {
     $("login").hidden = true;
     $("app").hidden = false;
+    renderSkeletons();
     route();
     clearInterval(timer);
     timer = setInterval(() => {
@@ -1336,6 +1473,10 @@
     applyStaticTexts();
     document.querySelectorAll("[data-lang]").forEach((select) => select.addEventListener("change", (e) => setLang(e.target.value)));
     $("lang").addEventListener("click", () => setLang(LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]));
+    document.querySelectorAll("[data-theme-btn]").forEach((btn) => btn.addEventListener("click", cycleTheme));
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(() => { layoutZones(); snapLater(); }).observe(document.querySelector(".hall"));
+    }
     $("login-form").addEventListener("submit", login);
     $("logout").addEventListener("click", logout);
     $("refresh").addEventListener("click", () => {

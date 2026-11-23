@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0b0a1a">
+  <meta name="color-scheme" content="dark light">
+  <script>
+    // Тема до первой отрисовки, чтобы не мигал другой фон.
+    try { const th = localStorage.getItem("panel.theme"); if (th === "light" || th === "dark") document.documentElement.dataset.theme = th; } catch { /* приватный режим */ }
+  </script>
   <title>клуб.</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23e4dcff'/%3E%3Cstop offset='1' stop-color='%23ffc9b6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='16' fill='url(%23g)'/%3E%3Ccircle cx='21' cy='20' r='2.6' fill='%230b0a1a'/%3E%3C/svg%3E">
   <link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
@@ -37,6 +40,9 @@
       <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5"/></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10Z"/></symbol>
+      <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" stroke="none"/></symbol>
     </defs>
   </svg>
 
@@ -65,11 +71,14 @@
       <button type="submit" class="btn primary block" id="login-button" data-i18n="loginButton">Войти</button>
       <div class="auth-foot">
         <span class="eyebrow" data-i18n="brand">Панель клуба</span>
+        <div>
+        <button type="button" class="icon-btn sm ring" data-theme-btn data-i18n-title="themeToggle"><svg class="i"><use href="#i-auto"/></svg></button>
         <select class="select" data-lang aria-label="Language">
           <option value="ru">Русский</option>
           <option value="uz">O‘zbekcha</option>
           <option value="en">English</option>
         </select>
+        </div>
       </div>
     </form>
   </div>
@@ -85,6 +94,7 @@
       <a class="rail-item" href="#network" data-view="network"><svg class="i"><use href="#i-network"/></svg><span class="tip" data-i18n="navNetwork">Сеть</span><b class="nav-count" id="nav-network" hidden></b></a>
       <div class="rail-sep" aria-hidden="true"></div>
       <button type="button" class="icon-btn lang" id="lang" data-i18n-title="language">RU</button>
+      <button type="button" class="icon-btn" data-theme-btn data-i18n-title="themeToggle"><svg class="i"><use href="#i-auto"/></svg></button>
       <button type="button" class="icon-btn" id="logout" data-i18n-title="logout"><svg class="i"><use href="#i-logout"/></svg></button>
     </nav>
 
@@ -124,7 +134,7 @@
               <p data-i18n="empty">Машин пока нет. Установите помощник бездиска на ПК — он появится здесь.</p>
             </div>
             <div id="m-nomatch" class="empty-state compact" hidden><p data-i18n="noMatches">Ничего не найдено</p></div>
-            <div class="ornament">
+            <div class="ornament" id="ornament" hidden>
               <div class="ornament-bar glass dock">
                 <div class="seg" id="m-filter" role="group"></div>
                 <span class="ornament-sep" aria-hidden="true"></span>
@@ -160,14 +170,14 @@
           <div class="glass bright panel grow-1" id="lib-summary"></div>
           <div class="glass panel grow-1">
             <div class="panel-head"><span class="eyebrow" data-i18n="libAdoptionTitle">ПК на связи</span></div>
-            <div id="lib-adoption"></div>
+            <div id="lib-adoption" class="adoption"></div>
           </div>
           <form id="lib-publish" class="glass panel fixed-side">
             <span class="eyebrow" data-i18n="libPublishTitle">Новая версия</span>
             <p class="lead" data-i18n="libPublishHint"></p>
             <label class="field"><span data-i18n="imgLabel">Версия</span><input id="lib-label" class="input mono" maxlength="40" required></label>
             <p id="lib-publish-error" class="form-error" hidden></p>
-            <button type="submit" class="btn lilac block" id="lib-publish-button" style="margin-top:auto"><svg class="i"><use href="#i-upload"/></svg><span data-i18n="imgPublish">Опубликовать</span></button>
+            <button type="submit" class="btn lilac block push-down" id="lib-publish-button"><svg class="i"><use href="#i-upload"/></svg><span data-i18n="imgPublish">Опубликовать</span></button>
           </form>
         </div>
 
@@ -271,7 +281,7 @@
 
         <div class="glass bright panel" id="net-hero" hidden></div>
 
-        <div class="row" style="align-items:flex-start">
+        <div class="row top">
           <form id="net-form" class="glass panel net-form" novalidate>
             <div class="panel-head"><h2 data-i18n="netPlan">Адресный план</h2></div>
             <p id="net-unconfigured" class="banner warn" data-i18n="netUnconfigured" hidden></p>
@@ -371,12 +381,12 @@
     <form method="dialog" class="modal-card glass bright">
       <div class="modal-body confirm-body">
         <span class="sign" id="confirm-sign"><svg class="i"><use href="#i-alert"/></svg></span>
-        <h2 class="modal-head-title" id="confirm-title" style="font-family: var(--display); font-weight: 300; font-size: 22px; line-height: 28px; letter-spacing: -0.03em"></h2>
+        <h2 class="confirm-title" id="confirm-title"></h2>
         <p id="confirm-text"></p>
       </div>
-      <div class="modal-foot" style="justify-content: stretch">
-        <button type="button" class="btn ghost" id="confirm-no" data-i18n="cancel" style="flex:1">Отмена</button>
-        <button type="submit" class="btn primary" id="confirm-yes" style="flex:1"></button>
+      <div class="modal-foot split">
+        <button type="button" class="btn ghost" id="confirm-no" data-i18n="cancel">Отмена</button>
+        <button type="submit" class="btn primary" id="confirm-yes"></button>
       </div>
     </form>
   </dialog>
