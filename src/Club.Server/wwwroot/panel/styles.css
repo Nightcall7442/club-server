@@ -326,7 +326,6 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1); opacity:
 .tile-name { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tile-name b { font-size: 16px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-name span { font-size: 12px; line-height: 16px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tone-ok { --tone: var(--ok); } .tone-warn { --tone: var(--warn); } .tone-bad { --tone: var(--bad); } .tone-info { --tone: var(--info); } .tone-idle { --tone: var(--idle); }
 
 .ornament { position: absolute; left: 0; right: 0; bottom: -28px; display: flex; justify-content: center; pointer-events: none; z-index: 2; }
 .ornament-bar { pointer-events: auto; display: flex; align-items: center; gap: 4px; max-width: calc(100% - 32px); height: 56px; padding: 6px; border-radius: 28px; }
@@ -454,6 +453,46 @@ details[open] > summary .i { rotate: 90deg; }
 .stp.failed { color: var(--bad); }
 .stp.failed .dot { color: #1f0a10; background: var(--bad); box-shadow: none; }
 
+/* Лента версий: от старых к новым, текущая светится. */
+.timeline { position: relative; display: flex; overflow-x: auto; padding: 4px 0 0; scrollbar-width: none; }
+.timeline::-webkit-scrollbar { display: none; }
+.timeline::before { content: ""; position: absolute; left: 68px; right: 68px; top: 19px; height: 2px; border-radius: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.22)); }
+.tl-node { --tone: var(--idle); position: relative; flex: 1 0 136px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.tl-dot { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 4px; border-radius: 12px; background: #251f4a; box-shadow: inset 0 0 0 2px var(--tone); }
+.tl-dot::after { content: ""; width: 8px; height: 8px; border-radius: 4px; background: var(--tone); }
+.tl-node.current .tl-dot { width: 32px; height: 32px; margin-top: 0; border-radius: 16px; background: var(--tone); box-shadow: 0 0 0 6px color-mix(in srgb, var(--tone) 20%, transparent), 0 0 32px var(--tone); }
+.tl-node.current .tl-dot::after { width: 10px; height: 10px; border-radius: 5px; background: var(--ink); }
+.tl-node.pulse .tl-dot::after { animation: breathe 1.4s ease-in-out infinite; }
+.tl-node.retired { opacity: 0.45; }
+.tl-label { font-family: var(--mono); font-size: 13px; line-height: 16px; color: var(--text-2); }
+.tl-node.current .tl-label { font-family: var(--display); font-size: 20px; line-height: 24px; font-weight: 300; letter-spacing: -0.03em; color: var(--text); }
+.tl-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.tl-meta b { font-weight: 600; color: var(--tone); }
+
+/* Цепочка загрузки по сети. */
+.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 28px 20px; }
+.chain-node { --tone: var(--idle); display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 8px; border-radius: 18px; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text); background: var(--well); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 40%, transparent); }
+.chain-node.optional { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); color: var(--muted); }
+.chain-node .sign { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 10px; color: var(--ink); background: var(--tone); }
+.chain-node .sign .i { width: 12px; height: 12px; stroke-width: 2.6; }
+.chain > .i { width: 16px; height: 16px; color: var(--faint); }
+
+/* Адресная полоса подсети. */
+.net-hero-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px 32px; }
+.net-hero-top .hero-text { flex: 1 1 320px; }
+.addr { position: relative; height: 48px; border-radius: 16px; overflow: hidden; background: var(--well); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.addr .seg { position: absolute; top: 0; bottom: 0; }
+.addr .seg.seats { background: linear-gradient(180deg, rgba(196, 181, 255, 0.34), rgba(196, 181, 255, 0.16)); box-shadow: inset 1px 0 0 rgba(196, 181, 255, 0.6), inset -1px 0 0 rgba(196, 181, 255, 0.6); }
+.addr .seg.pool { background: linear-gradient(180deg, rgba(255, 181, 154, 0.24), rgba(255, 181, 154, 0.1)); box-shadow: inset 1px 0 0 rgba(255, 181, 154, 0.6), inset -1px 0 0 rgba(255, 181, 154, 0.6); }
+.addr .tick { position: absolute; top: 12px; bottom: 12px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.addr .tick.warn { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.addr .pin { position: absolute; top: 6px; bottom: 6px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--info); box-shadow: 0 0 8px var(--info); }
+.addr-scale { position: relative; height: 16px; margin-top: 8px; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted); }
+.addr-scale span { position: absolute; top: 0; white-space: nowrap; }
+.addr-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.addr-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.addr-legend i { width: 10px; height: 10px; border-radius: 3px; }
+
 /* ---------- Windows ---------- */
 
 .incoming-list { display: flex; flex-direction: column; gap: 12px; }
@@ -544,3 +583,6 @@ dialog.modal[open] .modal-card { animation: pop 0.2s cubic-bezier(0.2, 0.9, 0.3,
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Тон элемента — в самом конце, чтобы перекрывать значения по умолчанию у компонентов. */
+.tone-ok { --tone: var(--ok); } .tone-warn { --tone: var(--warn); } .tone-bad { --tone: var(--bad); } .tone-info { --tone: var(--info); } .tone-idle { --tone: var(--idle); } .tone-accent { --tone: var(--lilac); }

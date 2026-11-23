@@ -529,6 +529,7 @@
     renderNavCounters();
     if (view !== "network") return;
     renderNetSummary();
+    renderNetHero();
     $("net-unconfigured").hidden = net.configured;
     $("net-warnings").hidden = net.warnings.length === 0;
     $("net-warning-list").replaceChildren(...warningItems(net.warnings));
@@ -541,6 +542,53 @@
       el("td", { class: "mono" }, orDash(r.ip, true)),
       el("td", { class: "mono" }, orDash(r.hostname, true)),
       el("td", {}, r.problem ? badge("warn", t(`problem_${r.problem}`)) : badge("ok", t("resOk"))))));
+  }
+
+  // IPv4 в число и обратно — для адресной полосы.
+  function ipNum(ip) {
+    const p = String(ip || "").split(".").map(Number);
+    return p.length === 4 && p.every((x) => Number.isInteger(x) && x >= 0 && x <= 255) ? ((p[0] << 24) >>> 0) + (p[1] << 16) + (p[2] << 8) + p[3] : null;
+  }
+
+  function renderNetHero() {
+    const box = $("net-hero");
+    const s = netSettings;
+    const [base, prefix] = String(s?.subnet || "").split("/");
+    const b = ipNum(base);
+    const size = 2 ** (32 - Number(prefix));
+    if (!net || !s || b === null || !(size >= 4 && size <= 4096)) { box.hidden = true; return; }
+    box.hidden = false;
+    const pct = (ip) => { const n = ipNum(ip); return n === null ? null : Math.min(100, Math.max(0, ((n - b) / size) * 100)); };
+    const short = (n) => (size <= 256 ? `.${n & 255}` : [n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255].join("."));
+    const seatFrom = ipNum(s.reservedStart);
+    const seatTo = seatFrom !== null ? seatFrom + Math.max(0, (s.seatCapacity || 1) - 1) : null;
+    const poolFrom = ipNum(s.poolStart);
+    const poolTo = ipNum(s.poolEnd);
+    const seg = (cls, from, to) => (from === null || to === null ? null
+      : el("span", { class: `seg ${cls}`, style: { left: `${((from - b) / size) * 100}%`, width: `${((to - from + 1) / size) * 100}%` } }));
+    const ticks = net.reservations.filter((r) => r.ip).map((r) => el("span", {
+      class: `tick${r.problem ? " warn" : ""}`, style: { left: `${pct(r.ip)}%` }, title: `${pad(r.seat)} · ${r.name} · ${r.ip}`,
+    }));
+    const pins = [s.gateway, s.dhcpServer].filter(Boolean).map((ip) => el("span", { class: "pin", style: { left: `${pct(ip)}%` }, title: ip }));
+    const labels = [[b, ""], [seatFrom, ""], [poolFrom, ""], [b + size - 1, "end"]].filter(([n]) => n !== null);
+    const used = net.reservations.filter((r) => r.ip).length;
+    box.replaceChildren(
+      el("div", { class: "net-hero-top" },
+        el("div", { class: "hero-num" }, el("b", {}, used), el("span", {}, `/${s.seatCapacity ?? "—"}`)),
+        el("div", { class: "hero-text" },
+          el("span", { class: "eyebrow" }, t("netHeroEyebrow", { subnet: s.subnet, iface: s.interface || "—" })),
+          el("h2", {}, t("netHeroTitle")),
+          el("p", {}, `${seatFrom !== null && poolFrom !== null ? t("netLead", { seats: `${short(seatFrom)}–${short(seatTo)}`, pool: `${short(poolFrom)}–${short(poolTo ?? poolFrom)}` }) : ""} ${net.foreignDhcp.length ? t("netForeign") : t("netNoForeign")}`.trim()))),
+      el("div", {},
+        el("div", { class: "addr", role: "img", "aria-label": t("netHeroTitle") }, seg("seats", seatFrom, seatTo), seg("pool", poolFrom, poolTo), ticks, pins),
+        el("div", { class: "addr-scale", "aria-hidden": "true" }, labels.map(([n, end]) => el("span", {
+          style: end ? { right: "0" } : { left: `${((n - b) / size) * 100}%` },
+        }, short(n))))),
+      el("div", { class: "addr-legend" },
+        el("span", {}, el("i", { style: { background: "var(--info)" } }), t("lgInfra")),
+        el("span", {}, el("i", { style: { background: "rgba(196, 181, 255, 0.5)" } }), t("lgSeats")),
+        el("span", {}, el("i", { style: { background: "var(--ok)" } }), t("lgUsed")),
+        el("span", {}, el("i", { style: { background: "rgba(255, 181, 154, 0.5)" } }), t("lgPool"))));
   }
 
   function renderCapacity() {
@@ -563,6 +611,7 @@
     $("net-interfaces").replaceChildren(...(s.serverInterfaces ?? []).map((name) => el("option", { value: name })));
     formDirty = false;
     renderCapacity();
+    if (view === "network") renderNetHero();
   }
 
   function showError(id, error) {
@@ -742,6 +791,24 @@
     ];
   }
 
+  // Лента версий: последние, от старых к новым. Текущая — крупно и со свечением.
+  function timeline(boxId, cardId, list, stateKey) {
+    const visible = list.filter((v) => v.state !== "retired").concat(list.filter((v) => v.state === "retired").slice(0, 2));
+    const ordered = list.filter((v) => visible.includes(v)).slice(0, 7).reverse();
+    $(cardId).hidden = ordered.length === 0;
+    $(boxId).replaceChildren(...ordered.map((v) => {
+      const live = v.state === "publishing" || v.state === "importing" || v.state === "retiring";
+      const kind = v.role === "current" ? "current" : v.state === "retired" ? "retired" : live ? "pulse" : "";
+      const tone = v.role === "current" ? "accent" : v.role === "rollback" ? "info" : v.state === "failed" ? "bad" : live ? "warn" : v.state === "retired" ? "idle" : "ok";
+      const roleText = v.role ? t(v.role === "current" ? "imgCurrent" : "imgRollback") : t(`${stateKey}_${v.state}`);
+      const when = v.publishedAt || v.createdAt;
+      return el("div", { class: `tl-node tone-${tone === "accent" ? "accent" : tone} ${kind}`.trim(), title: v.lastError || null },
+        el("span", { class: "tl-dot", "aria-hidden": "true" }),
+        el("span", { class: "tl-label" }, v.label),
+        el("span", { class: "tl-meta" }, el("b", {}, roleText), when ? ago(when) : null));
+    }));
+  }
+
   function renderAdoption() {
     const a = lib.machines;
     if (!a || a.online === 0) {
@@ -771,7 +838,7 @@
   function renderOperation(op) {
     const steps = { publish: PUBLISH_STEPS, masterOpen: MASTER_OPEN_STEPS, masterClose: MASTER_CLOSE_STEPS }[op.kind] ?? ["promote"];
     const at = op.status === "done" ? steps.length : Math.max(0, steps.indexOf(op.step ?? steps[0]));
-    return el("div", { class: "op well", style: { flex: "1 1 420px" } },
+    return el("div", { class: "op well", style: { flex: "1 1 420px", minWidth: "0", maxWidth: "100%" } },
       el("div", { class: "op-head" },
         el("div", {}, el("b", {}, t(`op_${op.kind}`)), op.versionLabel ? el("span", { class: "mono" }, op.versionLabel) : null,
           badge(OP_STATUS[op.status] || "idle", t(`os_${op.status}`)), op.attempts > 1 ? el("span", { class: "small muted" }, `#${op.attempts}`) : null,
@@ -868,6 +935,8 @@
       $("lib-label").value = suggestLabel();
       $("lib-label").dataset.auto = "1";
     }
+
+    timeline("lib-timeline", "lib-timeline-card", lib.versions, "ls");
 
     $("lib-ops").hidden = lib.openOperations.length === 0;
     $("lib-op-list").replaceChildren(...lib.openOperations.map(renderOperation));
@@ -1017,6 +1086,7 @@
     }));
 
     renderBootFiles();
+    timeline("img-timeline", "img-timeline-card", imgs.images, "is");
 
     $("img-empty").hidden = imgs.images.length > 0;
     $("img-rows").replaceChildren(...imgs.images.map((i) => {
@@ -1055,6 +1125,12 @@
     $("bf-no-tftp").hidden = !report || report.tftpChecked;
     const problems = files.filter((f) => f.status !== "ok" && f.required).length;
     $("bf-state").replaceChildren(files.length ? badge(problems ? "bad" : "ok", problems ? t("bfProblems", { n: problems }) : t("bfAllOk")) : "");
+    $("bf-chain").replaceChildren(...files.flatMap((f, i) => {
+      const kind = f.status === "missing" && !f.required ? "idle" : BOOT_FILE[f.status] || "idle";
+      const node = el("span", { class: `chain-node tone-${kind}${f.required ? "" : " optional"}`, title: t(`bf_${f.status}`) },
+        el("span", { class: "sign" }, icon(f.status === "ok" ? "check" : f.status === "missing" && !f.required ? "info" : "x")), f.name.split("/").pop());
+      return i ? [icon("chevron"), node] : [node];
+    }));
     $("bf-rows").replaceChildren(...files.map((f) => {
       const kind = f.status === "missing" && !f.required ? "idle" : BOOT_FILE[f.status] || "idle";
       const status = [badge(kind, t(`bf_${f.status}`), f.expected.length && f.status !== "ok" ? t("bfNotSecure") : "")];
