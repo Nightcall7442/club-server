@@ -1,21 +1,22 @@
-// Экраны «Рабочие станции», «Библиотека игр», «Образы Windows» и «Сеть».
-// Без сборки и внешних зависимостей: панель работает в клубе без интернета.
+// Панель клуба: «Зал», «Игры», «Windows», «Сеть». Без сборки и внешних зависимостей —
+// панель работает в клубе без интернета (шрифты лежат в fonts/).
 (() => {
   "use strict";
 
   const API = "/panel/api/v1";
   const REFRESH_MS = 5000;
   const VIEWS = ["machines", "library", "images", "network"];
+  const LANGS = ["ru", "uz", "en"];
   const $ = (id) => document.getElementById(id);
 
   let lang = safeGet(localStorage, "panel.lang") || "ru";
-  let theme = safeGet(localStorage, "panel.theme") || "auto";
   let token = safeGet(sessionStorage, "panel.token");
   let data = null;
   let dataJson = "";
   let timer = null;
   let editing = null;
   let view = "machines";
+  let selectedId = null;
   let net = null;
   let netJson = "";
   let netSettings = null;
@@ -29,12 +30,7 @@
   let lastOk = 0;
   let lastFail = false;
   const openContents = new Set();
-  const filters = {
-    text: "",
-    status: safeGet(localStorage, "panel.filter") || "all",
-    zone: "",
-    mode: safeGet(localStorage, "panel.mode") || "grid",
-  };
+  const filters = { text: "", status: safeGet(localStorage, "panel.filter") || "all" };
   const NET_FIELDS = ["subnet", "interface", "dhcpServer", "gateway", "dnsServers", "poolStart", "poolEnd", "reservedStart", "leaseTimeSec", "keaSubnetId"];
 
   function safeGet(storage, key) {
@@ -50,19 +46,21 @@
     return vars ? text.replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "") : text;
   }
 
+  const has = (key) => t(key) !== key;
+
   function applyStaticTexts() {
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); });
     document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); });
+    document.querySelectorAll("[data-i18n-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nLabel)); });
     document.querySelectorAll("[data-i18n-title]").forEach((node) => {
       node.title = t(node.dataset.i18nTitle);
       node.setAttribute("aria-label", node.title);
     });
     document.querySelectorAll("[data-lang]").forEach((select) => { select.value = lang; });
-    document.title = t("brand");
+    $("lang").textContent = lang.toUpperCase();
+    document.title = t("brandShort");
     renderHeader();
-    renderFilters();
-    applyTheme();
   }
 
   function el(tag, props = {}, ...children) {
@@ -70,6 +68,7 @@
     for (const [k, v] of Object.entries(props)) {
       if (v === null || v === undefined || v === false) continue;
       if (k === "class") node.className = v;
+      else if (k === "style" && typeof v === "object") Object.assign(node.style, v);
       else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
       else node.setAttribute(k, v);
     }
@@ -96,12 +95,13 @@
   }
 
   function iconButton(ico, title, onclick, cls = "") {
-    return el("button", { type: "button", class: `icon-btn sm ${cls}`.trim(), title, "aria-label": title, onclick }, icon(ico));
+    return el("button", { type: "button", class: `icon-btn sm ring ${cls}`.trim(), title, "aria-label": title, onclick }, icon(ico));
   }
 
   // Прочерк вместо отсутствующего или невменяемого значения (сервер уже отбросил невозможные).
   const dash = () => el("span", { class: "dash" }, "—");
   const orDash = (value, mono) => (value === null || value === undefined || value === "" ? dash() : el("span", { class: mono ? "mono" : "" }, value));
+  const pad = (n) => String(n).padStart(2, "0");
 
   async function api(path, options = {}) {
     const response = await fetch(API + path, {
@@ -119,10 +119,9 @@
       error.details = body?.error?.details;
       throw error;
     }
-    return response.status === 204 || response.status === 202 && response.headers.get("content-length") === "0" ? null : response.json().catch(() => null);
+    return response.status === 204 ? null : response.json().catch(() => null);
   }
 
-  // Отметка «данные свежие» для индикатора в шапке.
   function markOk() { lastOk = Date.now(); lastFail = false; renderLive(); }
   function markFail() { lastFail = true; renderLive(); }
 
@@ -145,18 +144,22 @@
     renderLive();
   }
 
+  function clock() {
+    const d = new Date();
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function renderLive() {
-    const live = $("live");
-    if (!lastOk) { $("live-text").textContent = "…"; return; }
-    live.classList.toggle("stale", lastFail);
-    $("live-text").textContent = lastFail ? t("liveStale") : t("liveUpdated", { ago: agoText(new Date(lastOk).toISOString()) });
+    $("live").classList.toggle("stale", lastFail);
+    $("live-text").textContent = lastFail ? t("liveStale") : `${t("liveOk")} · ${clock()}`;
   }
 
   // ---------- Уведомления и подтверждения ----------
 
   function toast(text, kind = "ok") {
     const ico = { ok: "check", bad: "alert", info: "info" }[kind] || "info";
-    const node = el("div", { class: `toast ${kind}`, role: kind === "bad" ? "alert" : "status" }, icon(ico), el("span", {}, text),
+    const node = el("div", { class: `toast glass dock ${kind}`, role: kind === "bad" ? "alert" : "status" },
+      el("span", { class: "sign" }, icon(ico)), el("span", {}, text),
       el("button", { type: "button", class: "icon-btn sm", "aria-label": t("close"), onclick: () => dismiss() }, icon("x")));
     const dismiss = () => {
       node.classList.add("out");
@@ -166,7 +169,7 @@
     setTimeout(dismiss, kind === "bad" ? 9000 : 4000);
   }
 
-  // Своё окно вместо confirm(): тот же текст, но в стиле панели и с понятной главной кнопкой.
+  // Своё окно вместо confirm(): тот же смысл, но в стиле панели и с понятной главной кнопкой.
   function ask(text, opts = {}) {
     const { title = t("confirmTitle"), ok = t("confirmOk"), danger = false } = opts;
     const dialog = $("confirm");
@@ -174,14 +177,13 @@
     $("confirm-text").textContent = text;
     $("confirm-yes").textContent = ok;
     $("confirm-yes").className = `btn ${danger ? "danger" : "primary"}`;
-    $("confirm-ico").className = `ico-wrap lg ${danger ? "bad" : "accent"}`;
-    $("confirm-ico").replaceChildren(icon(danger ? "alert" : "info"));
+    $("confirm-sign").className = `sign${danger ? " bad" : ""}`;
+    $("confirm-sign").replaceChildren(icon(danger ? "alert" : "info"));
     return new Promise((resolve) => {
-      const done = (value) => {
+      const onClose = () => {
         dialog.removeEventListener("close", onClose);
-        resolve(value);
+        resolve(dialog.returnValue === "yes");
       };
-      const onClose = () => done(dialog.returnValue === "yes");
       dialog.returnValue = "";
       dialog.addEventListener("close", onClose);
       dialog.showModal();
@@ -201,16 +203,7 @@
     maintenance: ["info", "maintenanceStatus"],
     reimaging: ["warn", "reimaging"],
   };
-
-  const REIMAGE = {
-    requested: "info",
-    deploying: "info",
-    failed: "bad",
-    booting: "info",
-    done: "ok",
-    cancelled: "idle",
-  };
-
+  const REIMAGE = { requested: "info", deploying: "warn", failed: "bad", booting: "info", done: "ok", cancelled: "idle" };
   const VOLUME = {
     none: ["idle", "volNone"],
     mounting: ["info", "volMounting"],
@@ -231,190 +224,248 @@
     return el("div", { class: "badges" }, badges);
   }
 
-  // Версия образа на ПК и ход перезаливки: этап, проценты, причина сбоя.
-  function windowsParts(m) {
-    const r = m.reimage;
-    const parts = [m.imageVersion ? el("span", { class: "mono" }, m.imageVersion) : dash()];
-    if (m.masterState) {
-      parts.push(el("div", {}, badge(m.masterState === "failed" ? "bad" : "warn", t("masterBadge", { letter: "M" }), t(`mm_${m.masterState}`))));
-    }
-    const sb = m.secureBoot;
-    if (sb && sb.enabled !== null && sb.enabled !== undefined) {
-      const title = `db: CA 2011 ${sb.thirdPartyCa2011 ? "✓" : "✗"}, CA 2023 ${sb.windowsCa2023 ? "✓" : "✗"}; dbx: PCA 2011 ${sb.pca2011Revoked ? "✗" : "—"}`;
-      const sbBadges = [badge(sb.enabled ? "ok" : "idle", t(sb.enabled ? "sbOn" : "sbOff"), title)];
-      if (sb.enabled && sb.thirdPartyCa2011 === false) sbBadges.push(badge("bad", t("sbNoCa2011"), title));
-      if (sb.enabled && sb.pca2011Revoked) sbBadges.push(badge("info", t("sbRevoked"), title));
-      parts.push(el("div", { class: "badges" }, sbBadges));
-    }
-    if (r) {
-      let text = t(`rs_${r.state}`);
-      if (r.state === "deploying" && r.step) text += ` · ${t(`st_${r.step}`)}${r.percent !== null && r.percent !== undefined ? ` ${r.percent}%` : ""}`;
-      if (r.state === "failed" && r.failure) {
-        const key = `fr_${r.failure}`;
-        text += ` · ${t(key) === key ? t(`st_${r.failure}`) : t(key)}`;
-      }
-      if (r.attempts > 1) text += ` (#${r.attempts})`;
-      parts.push(el("div", {}, badge(REIMAGE[r.state] || "idle", text, r.message || "")));
-      if (r.state === "deploying" && r.step === "download" && r.percent !== null && r.percent !== undefined) {
-        parts.push(el("div", { class: "progress" }, el("span", { style: `width:${r.percent}%` })));
-      }
-    }
-    return el("div", { class: "cell-stack" }, parts);
+  function reimageText(r) {
+    let text = t(`rs_${r.state}`);
+    if (r.state === "deploying" && r.step) text += ` · ${t(`st_${r.step}`)}${r.percent !== null && r.percent !== undefined ? ` ${r.percent}%` : ""}`;
+    if (r.state === "failed" && r.failure) text += ` · ${has(`fr_${r.failure}`) ? t(`fr_${r.failure}`) : t(`st_${r.failure}`)}`;
+    if (r.attempts > 1) text += ` (#${r.attempts})`;
+    return text;
   }
 
-  function machineActions(m) {
-    const r = m.reimage;
-    const active = r && ["requested", "deploying", "failed", "booting"].includes(r.state);
-    const buttons = [iconButton("edit", t("edit"), () => openEdit(m))];
-    if (!active || r.state === "booting" || r.state === "failed") {
-      buttons.push(iconButton("reimage", t("reimage"), () => openReimage(m)));
-    }
-    if (r && ["requested", "failed"].includes(r.state) && !r.diskTouched) {
-      buttons.push(iconButton("x", t("reimageCancel"), async () => {
-        if (await ask(t("reimageConfirmCancel", { name: m.name }), { danger: true, ok: t("reimageCancel") })) act(`/machines/${m.id}/reimage/cancel`);
-      }, "danger"));
-    }
-    return el("div", { class: "row-actions" }, buttons);
+  function sbBadges(sb) {
+    if (!sb || sb.enabled === null || sb.enabled === undefined) return dash();
+    const title = `db: CA 2011 ${sb.thirdPartyCa2011 ? "✓" : "✗"}, CA 2023 ${sb.windowsCa2023 ? "✓" : "✗"}; dbx: PCA 2011 ${sb.pca2011Revoked ? "✗" : "—"}`;
+    const list = [badge(sb.enabled ? "ok" : "idle", t(sb.enabled ? "sbOn" : "sbOff"), title)];
+    if (sb.enabled && sb.thirdPartyCa2011 === false) list.push(badge("bad", t("sbNoCa2011"), title));
+    if (sb.enabled && sb.pca2011Revoked) list.push(badge("info", t("sbRevoked"), title));
+    return el("div", { class: "badges" }, list);
   }
+
+  // Одно состояние места для плитки и окна места: тон, короткая подпись, история, заливка.
+  function seatState(m) {
+    const r = m.reimage;
+    const v = m.volume || {};
+    const sb = m.secureBoot;
+    const activeReimage = r && ["requested", "deploying", "failed", "booting"].includes(r.state);
+    if (activeReimage) {
+      const percent = r.state === "deploying" && r.percent !== null && r.percent !== undefined ? r.percent : null;
+      const step = r.step ? t(`st_${r.step}`) : "";
+      return {
+        tone: REIMAGE[r.state],
+        short: r.state === "deploying" ? t("tile_deploying", { p: percent !== null ? `${percent}%` : step }) : t(`tile_${r.state}`),
+        story: t(`sty_${r.state}`, { step, reason: r.failure ? (has(`fr_${r.failure}`) ? t(`fr_${r.failure}`) : t(`st_${r.failure}`)) : r.message || "" }),
+        level: percent,
+      };
+    }
+    if (m.status === "offline") return { tone: "bad", short: t("tile_offline"), story: t("sty_offline", { ago: m.lastSeenAt ? agoText(m.lastSeenAt) : "—" }), hollow: true };
+    if (m.status === "neverSeen") return { tone: "idle", short: t("tile_neverSeen"), story: t("sty_neverSeen"), hollow: true };
+    if (m.status === "maintenance") return { tone: "info", short: t("tile_maintenance"), story: t("sty_maintenance") };
+    if (v.state === "failed") return { tone: "bad", short: t("tile_volFailed"), story: t("sty_volFailed", { error: v.error || "" }) };
+    if (v.state === "switchPending") return { tone: "warn", short: t("tile_switchPending"), story: t("sty_switchPending", { version: data?.currentLibraryVersion || "" }) };
+    if (v.state === "mounted" && v.readOnlyVerified !== true) return { tone: "bad", short: t("tile_notVerified"), story: t("sty_notVerified") };
+    if (sb?.enabled && sb.thirdPartyCa2011 === false) return { tone: "warn", short: t("tile_noCa"), story: t("sty_noCa") };
+    if (v.outdated) return { tone: "warn", short: t("tile_outdated"), story: t("sty_outdated") };
+    if (v.state === "mounting") return { tone: "info", short: t("tile_mounting"), story: t("sty_mounting") };
+    if (v.state !== "mounted") return { tone: "warn", short: t("tile_noVolume"), story: t("sty_noVolume") };
+    return { tone: "ok", short: t("tile_ok"), story: t("sty_ok", { lib: v.libraryVersion || "—", image: m.imageVersion || "—" }) };
+  }
+
+  function needsAttention(m) {
+    const s = seatState(m);
+    return s.tone === "bad" || s.tone === "warn" || m.status === "neverSeen";
+  }
+
+  const FILTERS = {
+    all: () => true,
+    attention: needsAttention,
+    offline: (m) => m.status === "offline" || m.status === "neverSeen",
+    service: (m) => m.status === "maintenance" || m.status === "reimaging",
+  };
 
   function zoneName(id) {
     return data?.zones.find((z) => z.id === id)?.name ?? id;
   }
 
-  // Требует внимания: нет связи, ошибка тома, том не проверен на запись, сбой перезаливки.
-  function needsAttention(m) {
-    const v = m.volume || {};
-    return m.status === "offline" || v.state === "failed" || v.outdated
-      || (v.state === "mounted" && v.readOnlyVerified !== true) || m.reimage?.state === "failed"
-      || (m.secureBoot?.enabled && m.secureBoot?.thirdPartyCa2011 === false);
+  // ---------- Зал ----------
+
+  // Дата словами. Для узбекского в браузерах часто нет данных локали — берём названия из переводов.
+  function dateLine(d) {
+    const own = window.I18N[lang]?.weekdays;
+    if (own) return t("dateFormat", { weekday: own[d.getDay()], day: d.getDate(), month: window.I18N[lang].months[d.getMonth()] });
+    return d.toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "long" });
   }
 
-  const FILTERS = {
-    all: () => true,
-    online: (m) => m.status === "online",
-    offline: (m) => m.status === "offline" || m.status === "neverSeen",
-    attention: needsAttention,
-    service: (m) => m.status === "maintenance" || m.status === "reimaging",
-  };
-
-  // ---------- Рабочие станции ----------
-
-  function kpi(kind, ico, label, value, sub, opts = {}) {
-    return el("div", { class: `kpi ${kind}${opts.onclick ? " clickable" : ""}`, onclick: opts.onclick },
-      el("div", { class: "kpi-top" }, el("span", {}, label), el("span", { class: `ico-wrap ${kind}` }, icon(ico))),
-      el("div", { class: `kpi-value${opts.text ? " text" : ""}`, title: opts.text ? value || "" : null }, value ?? "—"),
-      sub ? el("div", { class: "kpi-sub" }, sub) : null);
+  function shiftName() {
+    const h = new Date().getHours();
+    return t(h < 6 ? "shiftNight" : h < 12 ? "shiftMorning" : h < 18 ? "shiftDay" : "shiftEvening");
   }
 
   function setFilter(status) {
     filters.status = status;
     safeSet(localStorage, "panel.filter", status);
-    renderFilters();
-    renderRows();
+    renderFloor();
   }
 
-  function renderSummary() {
-    const total = data.machines.filter((m) => m.status !== "pendingApproval").length;
-    const service = (data.maintenance || 0) + (data.reimaging || 0);
-    $("summary").replaceChildren(
-      kpi("ok", "monitor", t("kpiOnline"), data.online, t("kpiOf", { n: total }), { onclick: () => setFilter("online") }),
-      kpi("bad", "wifi-off", t("kpiOffline"), data.offline, null, { onclick: () => setFilter("offline") }),
-      data.pending ? kpi("warn", "user-plus", t("kpiPending"), data.pending, null) : kpi("info", "wrench", t("kpiService"), service, data.reimaging ? `${data.reimaging} ${t("sumReimaging")}` : null, { onclick: () => setFilter("service") }),
-      kpi("accent", "layers", t("kpiLibrary"), data.currentLibraryVersion, null, { text: true, onclick: () => { location.hash = "#library"; } }),
-      kpi("accent", "windows", t("kpiImage"), data.currentImageVersion, null, { text: true, onclick: () => { location.hash = "#images"; } }));
+  function seated() {
+    return data ? data.machines.filter((m) => m.status !== "pendingApproval") : [];
+  }
+
+  function renderHero() {
+    const all = seated();
+    $("hall-shift").textContent = `${shiftName()} · ${dateLine(new Date())}`;
+    $("hall-zones").textContent = t("zonesCount", { n: data.zones.length || 1 });
+    $("hero-n").textContent = data.online;
+    $("hero-of").textContent = `/${all.length}`;
+    // Самое важное — коротко: не больше трёх пунктов по убыванию срочности.
+    const silent = all.filter((m) => m.status === "offline" || m.status === "neverSeen").length;
+    const attention = all.filter((m) => m.status === "online" && needsAttention(m)).length;
+    const parts = [
+      [silent, "hp_offline"], [data.reimaging, "hp_reimaging"], [attention, "hp_attention"], [data.pending, "hp_pending"], [data.maintenance, "hp_maintenance"],
+    ].filter(([n]) => n > 0).slice(0, 3).map(([n, key]) => t(key, { n }));
+    const line = parts.length ? `${parts.join(", ")}.` : all.length ? t("hp_allGood") : t("hp_empty");
+    $("hero-line").textContent = line.charAt(0).toUpperCase() + line.slice(1);
+  }
+
+  function renderFilters() {
+    const list = seated();
+    $("m-filter").replaceChildren(...Object.keys(FILTERS).map((key) => el("button", {
+      type: "button", class: filters.status === key ? "active" : "", "aria-pressed": filters.status === key ? "true" : "false", onclick: () => setFilter(key),
+    }, t(`flt_${key}`), el("b", {}, list.filter(FILTERS[key]).length))));
+    $("m-admit").hidden = !data?.pending;
+    $("m-admit-n").textContent = data?.pending || "";
+  }
+
+  function matches(m) {
+    const q = filters.text.trim().toLowerCase();
+    return (FILTERS[filters.status] || FILTERS.all)(m)
+      && (!q || [String(m.number), m.name, m.hostname, m.ipAddress, ...(m.macAddresses || []), m.helperVersion].some((v) => v && String(v).toLowerCase().includes(q)));
+  }
+
+  function tile(m) {
+    const s = seatState(m);
+    const on = m.id === selectedId;
+    const glow = el("span", { class: `glow${s.level !== null && s.level !== undefined ? " level" : ""}`, "aria-hidden": "true" });
+    if (s.level !== null && s.level !== undefined) glow.style.setProperty("--level", `${s.level}%`);
+    return el("button", {
+      type: "button",
+      class: `tile tone-${s.tone}${s.hollow ? " hollow" : ""}${on ? " on" : ""}${matches(m) ? "" : " dim"}`,
+      "aria-pressed": on ? "true" : "false",
+      "aria-label": `${t("seat")} ${m.number}, ${m.name}: ${s.short}`,
+      onclick: () => { selectedId = m.id; renderFloor(); renderInspector(); },
+    },
+    glow,
+    el("span", { class: "tile-top" }, el("span", { class: "mono" }, pad(m.number)), el("span", { class: "tile-dot" })),
+    el("span", { class: "tile-name" }, el("b", { title: m.name }, m.name), el("span", {}, s.short)));
+  }
+
+  function renderFloor() {
+    if (!data) return;
+    renderFilters();
+    const all = seated();
+    $("empty").hidden = all.length > 0;
+    $("m-nomatch").hidden = all.length === 0 || all.some(matches);
+    const zoneIds = [...new Set([...data.zones.map((z) => z.id), ...all.map((m) => m.zone)])];
+    const groups = zoneIds.map((id) => ({ id, machines: all.filter((m) => m.zone === id).sort((a, b) => a.number - b.number) })).filter((g) => g.machines.length);
+    const biggest = Math.max(0, ...groups.map((g) => g.machines.length));
+    $("floor").replaceChildren(...groups.map((g) => {
+      const nums = g.machines.map((m) => m.number);
+      const isVip = /vip/i.test(g.id) || /vip/i.test(zoneName(g.id));
+      return el("div", { class: `zone${g.machines.length === biggest && groups.length > 1 ? " wide" : ""}${isVip ? " vip" : ""}` },
+        el("div", { class: "zone-head caps" }, el("span", {}, zoneName(g.id)), el("span", { class: "mono" }, `${pad(Math.min(...nums))}–${pad(Math.max(...nums))}`)),
+        el("div", { class: "tiles" }, g.machines.map(tile)));
+    }));
+  }
+
+  function renderInspector() {
+    const box = $("inspector");
+    const m = seated().find((x) => x.id === selectedId);
+    box.style.removeProperty("--tone");
+    if (!m) {
+      box.className = "inspector glass bright panel";
+      box.replaceChildren(el("div", { class: "insp-empty" }, el("p", {}, t("inspEmpty"))));
+      return;
+    }
+    const s = seatState(m);
+    box.className = `inspector glass bright panel tone-${s.tone}`;
+    const r = m.reimage;
+    const canCancel = r && ["requested", "failed"].includes(r.state) && !r.diskTouched;
+    const canReimage = !r || !["requested", "deploying", "failed", "booting"].includes(r.state) || r.state === "booting" || r.state === "failed";
+    const progress = s.level !== null && s.level !== undefined
+      ? el("div", { class: "well progress-box" },
+        el("div", { class: "gauge", style: { "--p": `${s.level}%` } }, el("span", { class: "arc" }), el("b", {}, `${s.level}%`)),
+        el("div", {}, el("b", {}, t(`st_${r.step || "download"}`)), el("span", { class: "small muted" }, reimageText(r))))
+      : null;
+    const prop = (label, value) => el("div", {}, el("dt", {}, label), el("dd", {}, value));
+    box.replaceChildren(...[
+      el("span", { class: "halo", "aria-hidden": "true" }),
+      el("div", { class: "insp-head" },
+        el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+          el("span", { class: "eyebrow" }, `${t("seat")} · ${zoneName(m.zone)}`),
+          el("span", { class: "insp-no" }, pad(m.number))),
+        el("span", { class: `pill${s.hollow ? " hollow" : ""}` }, s.short)),
+      el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+        el("span", { class: "insp-name" }, m.name),
+        el("p", { class: "lead" }, s.story)),
+      progress,
+      el("dl", { class: "props" },
+        prop(t("inspLib"), volumeBadges(m.volume)),
+        prop(t("inspWin"), el("div", { class: "cell-stack", style: { alignItems: "flex-end" } }, orDash(m.imageVersion, true),
+          m.masterState ? badge(m.masterState === "failed" ? "bad" : "warn", t("masterBadge", { letter: "M" }), t(`mm_${m.masterState}`)) : null,
+          r && !progress ? badge(REIMAGE[r.state] || "idle", reimageText(r), r.message || "") : null)),
+        prop("Secure Boot", sbBadges(m.secureBoot)),
+        prop(t("inspIp"), orDash(m.ipAddress, true)),
+        prop("MAC", m.macAddresses.length ? el("span", { class: "mono" }, m.macAddresses.join(", ")) : dash()),
+        prop(t("inspHost"), orDash(m.hostname, true)),
+        prop(t("inspHelper"), orDash(m.helperVersion, true)),
+        prop(t("inspSeen"), ago(m.lastSeenAt))),
+      el("div", { class: "insp-actions" },
+        button(t("edit"), { cls: "primary", ico: "edit", onclick: () => openEdit(m) }),
+        canReimage ? button(t("reimage"), { ico: "reimage", onclick: () => openReimage(m) }) : null,
+        canCancel ? button(t("reimageCancel"), { cls: "danger-ghost", ico: "x", onclick: async () => {
+          if (await ask(t("reimageConfirmCancel", { name: m.name }), { danger: true, ok: t("reimageCancel") })) act(`/machines/${m.id}/reimage/cancel`);
+        } }) : null)].filter(Boolean));
   }
 
   function renderPending() {
     const pending = data.machines.filter((m) => m.status === "pendingApproval");
-    $("pending").hidden = pending.length === 0;
-    $("pending-count").textContent = pending.length;
-    $("pending-list").replaceChildren(...pending.map((m) => el("div", { class: "pending-item" },
-      el("div", { class: "ph" }, el("span", { class: "seat-mini" }, m.number), el("b", {}, m.hostname)),
-      el("div", { class: "meta" },
-        m.macAddresses.length ? el("span", { class: "mono" }, m.macAddresses.join(", ")) : null,
-        el("span", {}, m.ipAddress ? `IP ${m.ipAddress} · ` : "", t("registered"), " ", ago(m.registeredAt))),
-      el("div", { class: "actions" },
-        button(t("approve"), { cls: "primary sm", ico: "check", onclick: () => act(`/machines/${m.id}/approve`, t("approved", { name: m.hostname })) }),
-        button(t("reject"), { cls: "danger-ghost sm", ico: "x", onclick: async () => {
+    const box = $("pending");
+    box.hidden = pending.length === 0;
+    if (!pending.length) return;
+    box.replaceChildren(
+      el("span", { class: "eyebrow", style: { color: "var(--peach-2)" } }, t("doorEyebrow")),
+      el("div", { class: "door-title" }, t("doorTitle", { n: pending.length })),
+      el("div", { class: "door-list", style: { marginTop: "auto" } }, pending.map((m) => el("div", {},
+        el("div", { class: "who" }, el("b", {}, m.hostname),
+          el("span", {}, m.macAddresses.length ? `${m.macAddresses[0]} · ` : "", m.ipAddress ? `${m.ipAddress} · ` : "", ago(m.registeredAt))),
+        button(t("admit"), { cls: "peach sm", onclick: () => act(`/machines/${m.id}/approve`, t("approved", { name: m.hostname })) }),
+        iconButton("x", t("reject"), async () => {
           if (await ask(t("rejectConfirm", { name: m.hostname }), { danger: true, ok: t("reject") })) act(`/machines/${m.id}/reject`);
-        } })))));
+        }, "danger")))));
   }
 
-  function renderFilters() {
-    const list = data ? data.machines.filter((m) => m.status !== "pendingApproval") : [];
-    $("m-filter").replaceChildren(...Object.keys(FILTERS).map((key) => el("button", {
-      type: "button", class: filters.status === key ? "active" : "", onclick: () => setFilter(key),
-    }, t(`flt_${key}`), data ? el("b", {}, list.filter(FILTERS[key]).length) : null)));
-    $("m-view").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === filters.mode));
-    const zones = data?.zones ?? [];
-    $("m-zone").hidden = zones.length < 2;
-    $("m-zone").replaceChildren(el("option", { value: "" }, t("allZones")), ...zones.map((z) => el("option", { value: z.id }, z.name)));
-    $("m-zone").value = filters.zone;
-  }
-
-  function filteredMachines() {
-    const q = filters.text.trim().toLowerCase();
-    return data.machines
-      .filter((m) => m.status !== "pendingApproval")
-      .filter(FILTERS[filters.status] || FILTERS.all)
-      .filter((m) => !filters.zone || m.zone === filters.zone)
-      .filter((m) => !q || [String(m.number), m.name, m.hostname, m.ipAddress, ...(m.macAddresses || []), m.helperVersion]
-        .some((v) => v && String(v).toLowerCase().includes(q)));
-  }
-
-  function seatCard(m) {
-    const [kind, key] = STATUS[m.status] || ["idle", m.status];
-    const prop = (label, value) => el("div", { class: "seat-prop" }, el("span", {}, label), el("div", {}, value));
-    return el("article", { class: `seat ${kind}` },
-      el("div", { class: "seat-head" },
-        el("div", { class: "seat-no" }, m.number),
-        el("div", { class: "seat-name" },
-          el("b", { title: m.name }, m.name),
-          m.hostname && m.hostname !== m.name ? el("span", { class: "muted mono" }, m.hostname) : null,
-          badge(kind, t(key), null, m.status === "online" ? "pulse" : "")),
-        zoneTag(m.zone)),
-      el("div", { class: "seat-props" },
-        prop(t("colVolume"), volumeBadges(m.volume)),
-        prop(t("colImage"), windowsParts(m)),
-        prop(t("colIp"), orDash(m.ipAddress, true)),
-        m.helperVersion ? prop(t("colHelper"), el("span", { class: "mono" }, m.helperVersion)) : null),
-      el("div", { class: "seat-foot" },
-        el("span", { class: "seen" }, icon("clock"), ago(m.lastSeenAt)),
-        machineActions(m)));
-  }
-
-  function zoneTag(zone) {
-    return zone && (data?.zones.length ?? 0) > 1 ? el("span", { class: "zone-tag" }, zoneName(zone)) : null;
-  }
-
-  function renderRows() {
-    if (!data) return;
-    const all = data.machines.filter((m) => m.status !== "pendingApproval");
-    const machines = filteredMachines();
-    $("empty").hidden = all.length > 0;
-    $("m-nomatch").hidden = all.length === 0 || machines.length > 0;
-    const grid = filters.mode === "grid";
-    $("m-grid").hidden = !grid || machines.length === 0;
-    $("m-table").hidden = grid || machines.length === 0;
-    if (grid) {
-      $("m-grid").replaceChildren(...machines.map(seatCard));
-      return;
-    }
-    $("rows").replaceChildren(...machines.map((m) => {
-      const [kind, key] = STATUS[m.status] || ["idle", m.status];
-      return el("tr", {},
-        el("td", {}, el("span", { class: "seat-mini" }, m.number)),
-        el("td", {}, el("div", { class: "cell-stack" }, el("b", {}, m.name), m.hostname && m.hostname !== m.name ? el("span", { class: "cell-sub mono" }, m.hostname) : null)),
-        el("td", {}, badge(kind, t(key), null, m.status === "online" ? "pulse" : "")),
-        el("td", { class: "mono" }, orDash(m.ipAddress, true)),
-        el("td", { class: "mono" }, m.macAddresses.length ? m.macAddresses.join(", ") : dash()),
-        el("td", {}, zoneName(m.zone)),
-        el("td", {}, volumeBadges(m.volume)),
-        el("td", { class: "reimage-cell" }, windowsParts(m)),
-        el("td", {}, orDash(m.helperVersion, true)),
-        el("td", { class: "muted" }, ago(m.lastSeenAt)),
-        el("td", {}, machineActions(m)));
-    }));
+  function renderWidgets() {
+    const all = seated();
+    const lv = data.currentLibraryVersion;
+    const onCurrent = all.filter((m) => m.volume?.state === "mounted" && m.volume.libraryVersion === lv).length;
+    const switching = all.filter((m) => m.volume?.state === "switchPending").length;
+    const online = all.filter((m) => m.status === "online");
+    const segs = online.map((m) => {
+      const v = m.volume || {};
+      return v.state === "mounted" && v.libraryVersion === lv ? "ok" : v.state === "switchPending" ? "warn" : v.state === "failed" ? "bad" : v.state === "mounted" ? "info" : "idle";
+    }).sort((a, b) => ["ok", "info", "warn", "bad", "idle"].indexOf(a) - ["ok", "info", "warn", "bad", "idle"].indexOf(b));
+    $("w-games").replaceChildren(
+      el("div", { class: "panel-head" }, el("span", { class: "eyebrow" }, t("wGames")), el("a", { href: "#library", class: "small" }, t("wOpen"))),
+      el("div", { class: lv ? "big" : "big none" }, lv || t("noVersion")),
+      el("p", { class: "lead" }, lv ? t("wGamesLine", { n: onCurrent, s: switching }) : t("libEmpty")),
+      segs.length ? el("div", { class: "seg-bar", role: "img", "aria-label": t("libOnlineOf", { n: online.length }) }, segs.map((k) => el("span", { class: `tone-${k}` }))) : null,
+      el("a", { class: "link-pill", href: "#library" }, el("span", {}, t("wGamesLink")), el("span", { "aria-hidden": "true" }, icon("arrow", "sm"))));
+    const iv = data.currentImageVersion;
+    const reimagingNow = all.filter((m) => m.reimage && ["requested", "deploying", "booting"].includes(m.reimage.state)).length;
+    $("w-windows").replaceChildren(
+      el("div", { class: "panel-head" }, el("span", { class: "eyebrow" }, t("wWindows")), el("a", { href: "#images", class: "small" }, t("wOpen"))),
+      el("div", { class: iv ? "big" : "big none" }, iv || t("noVersion")),
+      el("p", { class: "lead" }, iv ? (reimagingNow ? t("wWindowsBusy", { n: reimagingNow }) : t("wWindowsIdle")) : t("imgEmpty")),
+      el("a", { class: "link-pill", href: "#images" }, el("span", {}, t("wWindowsLink")), el("span", { "aria-hidden": "true" }, icon("arrow", "sm"))));
   }
 
   function renderNavCounters() {
@@ -424,13 +475,7 @@
       node.textContent = n || "";
       node.className = `nav-count${kind ? ` ${kind}` : ""}`;
     };
-    if (data) {
-      const total = data.machines.filter((m) => m.status !== "pendingApproval").length;
-      setCount("nav-machines", data.pending, "");
-      $("side-online-n").textContent = data.online;
-      $("side-online-of").textContent = total ? ` / ${total}` : "";
-      $("side-online-bar").style.width = total ? `${(100 * data.online) / total}%` : "0";
-    }
+    if (data) setCount("nav-machines", data.pending, "");
     if (lib) setCount("nav-library", lib.warnings.length || lib.openOperations.length, lib.warnings.length ? "" : "info");
     if (imgs) setCount("nav-images", imgs.warnings.length, "");
     if (net) setCount("nav-network", net.foreignDhcp.length || net.warnings.length, net.foreignDhcp.length ? "bad" : "");
@@ -438,11 +483,14 @@
 
   function render() {
     if (!data) return;
+    const all = seated();
+    if (!all.some((m) => m.id === selectedId)) selectedId = (all.find(needsAttention) || all[0])?.id ?? null;
     renderNavCounters();
-    renderSummary();
+    renderHero();
+    renderFloor();
+    renderInspector();
     renderPending();
-    renderFilters();
-    renderRows();
+    renderWidgets();
   }
 
   // ---------- Сеть ----------
@@ -466,13 +514,12 @@
 
   function renderNetSummary() {
     const chips = [];
-    const chip = (kind, text, title) => chips.push(badge(kind, text, title));
-    if (!net.keaEnabled) chip("idle", t("keaOff"));
-    else if (!net.sync) chip("idle", t("keaNever"));
-    else if (net.sync.error) chip("bad", t("keaUnavailable"), net.sync.error);
-    else if (!net.sync.schemaOk) chip("bad", t("keaSchemaBad", { v: net.sync.schemaVersion ?? "—" }));
-    else chip("ok", t("keaSchema", { v: net.sync.schemaVersion }));
-    if (net.sync?.at) chips.push(el("span", { class: "chip" }, icon("refresh"), `${t("keaSynced")}: `, ago(net.sync.at)));
+    if (!net.keaEnabled) chips.push(badge("idle", t("keaOff")));
+    else if (!net.sync) chips.push(badge("idle", t("keaNever")));
+    else if (net.sync.error) chips.push(badge("bad", t("keaUnavailable"), net.sync.error));
+    else if (!net.sync.schemaOk) chips.push(badge("bad", t("keaSchemaBad", { v: net.sync.schemaVersion ?? "—" })));
+    else chips.push(badge("ok", t("keaSchema", { v: net.sync.schemaVersion })));
+    if (net.sync?.at) chips.push(el("span", { class: "chip" }, icon("refresh", "sm"), `${t("keaSynced")}: `, ago(net.sync.at)));
     $("net-summary").replaceChildren(...chips);
   }
 
@@ -488,7 +535,7 @@
     $("net-res-count").textContent = net.reservations.length;
     $("net-empty").hidden = net.reservations.length > 0;
     $("net-rows").replaceChildren(...net.reservations.map((r) => el("tr", {},
-      el("td", {}, el("span", { class: "seat-mini" }, r.seat)),
+      el("td", {}, el("span", { class: "seat-mini" }, pad(r.seat))),
       el("td", {}, r.name),
       el("td", { class: "mono" }, orDash(r.mac, true)),
       el("td", { class: "mono" }, orDash(r.ip, true)),
@@ -503,7 +550,7 @@
 
   function clearFieldErrors(form) {
     form.querySelectorAll(".field-error").forEach((node) => node.remove());
-    form.querySelectorAll("input.invalid").forEach((node) => node.classList.remove("invalid"));
+    form.querySelectorAll(".input.invalid").forEach((node) => node.classList.remove("invalid"));
   }
 
   function fillForm(s) {
@@ -592,7 +639,7 @@
         $("net-form-error").textContent = error.message;
         $("net-form-error").hidden = false;
       } else {
-        form.querySelector("input.invalid")?.focus();
+        form.querySelector(".input.invalid")?.focus();
       }
     } finally {
       $("net-save").disabled = false;
@@ -623,12 +670,12 @@
 
   function problemText(error) {
     const key = `re_${error.reason}`;
-    return error.reason && t(key) !== key ? t(key) : error.message;
+    return error.reason && has(key) ? t(key) : error.message;
   }
 
   async function openReimage(machine) {
     reimaging = machine;
-    $("reimage-name").textContent = `№ ${machine.number} · ${machine.name}`;
+    $("reimage-name").textContent = `${t("seat")} ${pad(machine.number)} · ${machine.name}`;
     $("reimage-new-disk").checked = false;
     $("reimage-error").hidden = true;
     let overview = imgs;
@@ -665,7 +712,7 @@
     }
   }
 
-  // ---------- Библиотека игр ----------
+  // ---------- Игры ----------
 
   const LIB_STATE = { publishing: "info", published: "ok", retiring: "idle", retired: "idle", failed: "bad" };
   const OP_STATUS = { pending: "idle", running: "info", done: "ok", failed: "bad" };
@@ -675,22 +722,22 @@
 
   function suggestLabel() {
     const d = new Date();
-    const base = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const base = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const taken = new Set((lib?.versions ?? []).map((v) => v.label));
     if (!taken.has(base)) return base;
     for (let i = 2; ; i++) if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
   }
 
-  // Карточка «текущая / откатная версия» — общая для библиотеки и образов.
+  // Карточка «текущая / откатная версия» — общая для игр и Windows.
   function versionHero(opts) {
-    const { title, ico, current, currentMeta, rollback, onRollback, rollbackLabel } = opts;
+    const { title, current, lead, meta, rollback, onRollback, rollbackLabel } = opts;
     return [
-      el("div", { class: "hero-label" }, icon(ico), title),
-      el("div", { class: `hero-value${current ? "" : " none"}` }, current || t("noVersion")),
-      currentMeta ? el("div", { class: "hero-meta" }, currentMeta) : null,
-      el("div", { class: "hero-rollback" },
-        el("span", { class: "ico-wrap" }, icon("undo")),
-        el("div", {}, el("div", { class: "small" }, t("rollbackVersion")), rollback ? el("b", {}, rollback) : dash()),
+      el("span", { class: "eyebrow" }, title),
+      el("div", { class: current ? "big" : "big none" }, current || t("noVersion")),
+      lead ? el("p", { class: "lead" }, lead) : null,
+      meta && meta.length ? el("div", { class: "badges" }, meta) : null,
+      el("div", { class: "rollback well" },
+        el("div", {}, el("span", { class: "small muted" }, t("rollbackVersion")), rollback ? el("b", {}, rollback) : dash()),
         rollback ? button(rollbackLabel, { cls: "sm", ico: "undo", onclick: onRollback }) : null),
     ];
   }
@@ -698,25 +745,18 @@
   function renderAdoption() {
     const a = lib.machines;
     if (!a || a.online === 0) {
-      $("lib-adoption").replaceChildren(el("div", { class: "empty-state compact" }, el("p", { class: "muted" }, t("libNoOnline"))));
+      $("lib-adoption").replaceChildren(el("p", { class: "lead" }, t("libNoOnline")));
       return;
     }
-    const colors = { onCurrent: "var(--ok)", onOlder: "var(--info)", switchPending: "var(--warn)", failed: "var(--bad)", notMounted: "var(--border-strong)" };
-    const parts = Object.keys(colors).filter((key) => a[key] > 0);
-    let acc = 0;
-    const stops = parts.map((key) => {
-      const from = acc;
-      acc += (100 * a[key]) / a.online;
-      return `${colors[key]} ${from}% ${acc}%`;
-    });
-    if (acc < 100) stops.push(`var(--surface-3) ${acc}% 100%`);
+    const tones = { onCurrent: "ok", onOlder: "info", switchPending: "warn", failed: "bad", notMounted: "idle" };
+    const parts = Object.keys(tones).filter((key) => a[key] > 0);
+    const segs = parts.flatMap((key) => Array.from({ length: a[key] }, () => tones[key]));
     const pct = Math.round((100 * (a.onCurrent || 0)) / a.online);
-    $("lib-adoption").replaceChildren(el("div", { class: "adoption" },
-      el("div", { class: "donut", style: `background: conic-gradient(${stops.join(", ")})`, title: t("libOnlineOf", { n: a.online }) },
-        el("div", { class: "donut-center" }, el("b", {}, `${pct}%`), el("span", {}, t("ad_onCurrent")))),
+    $("lib-adoption").replaceChildren(el("div", { style: { display: "flex", flexDirection: "column", gap: "20px" } },
+      el("div", { style: { display: "flex", alignItems: "baseline", gap: "12px" } }, el("span", { class: "big" }, `${pct}%`), el("span", { class: "muted" }, t("ad_onCurrent"))),
+      el("div", { class: "seg-bar" }, segs.map((k) => el("span", { class: `tone-${k}` }))),
       el("div", { class: "legend" },
-        el("div", { class: "legend-head" }, t("libOnlineOf", { n: a.online })),
-        parts.map((key) => el("div", {}, el("i", { style: `background:${colors[key]}` }), el("span", {}, t(`ad_${key}`)), el("b", {}, a[key]))))));
+        parts.map((key) => el("div", { class: `tone-${tones[key]}` }, el("i"), el("span", {}, t(`ad_${key}`)), el("b", {}, a[key]))))));
   }
 
   function stepper(steps, at, failed) {
@@ -731,11 +771,11 @@
   function renderOperation(op) {
     const steps = { publish: PUBLISH_STEPS, masterOpen: MASTER_OPEN_STEPS, masterClose: MASTER_CLOSE_STEPS }[op.kind] ?? ["promote"];
     const at = op.status === "done" ? steps.length : Math.max(0, steps.indexOf(op.step ?? steps[0]));
-    return el("div", { class: "op" },
+    return el("div", { class: "op well", style: { flex: "1 1 420px" } },
       el("div", { class: "op-head" },
         el("div", {}, el("b", {}, t(`op_${op.kind}`)), op.versionLabel ? el("span", { class: "mono" }, op.versionLabel) : null,
-          badge(OP_STATUS[op.status] || "idle", t(`os_${op.status}`)), op.attempts > 1 ? el("span", { class: "muted small" }, `#${op.attempts}`) : null,
-          el("span", { class: "muted small" }, ago(op.updatedAt || op.createdAt))),
+          badge(OP_STATUS[op.status] || "idle", t(`os_${op.status}`)), op.attempts > 1 ? el("span", { class: "small muted" }, `#${op.attempts}`) : null,
+          el("span", { class: "small muted" }, ago(op.updatedAt || op.createdAt))),
         op.status === "failed" ? button(t("libRetry"), { cls: "primary sm", ico: "refresh", onclick: () => libAct(`/library/operations/${op.id}/retry`) }) : null),
       stepper(steps, at, op.status === "failed"),
       op.lastError ? el("div", { class: "op-error" }, op.lastError) : null);
@@ -748,24 +788,20 @@
     const m = lib.master;
     const box = $("lib-master");
     const isOpen = !!m && m.state !== "closed";
-    $("lib-master-card").classList.toggle("open", isOpen);
-    $("lib-master-ico").className = `ico-wrap ${isOpen ? "warn" : ""}`;
-    $("lib-master-ico").replaceChildren(icon(isOpen ? "unlock" : "lock"));
+    $("lib-master-card").className = `glass panel${isOpen ? " warm" : ""}`;
     if (!m) { box.replaceChildren(); return; }
     const parts = [];
-
     if (m.state !== "closed") {
-      const head = [];
-      if (m.driveLetter) head.push(el("span", { class: "drive" }, `${m.driveLetter}:`));
-      head.push(el("div", { class: "who" },
-        m.machineName ? el("b", {}, t("masterOnPc", { name: m.machineName, letter: m.driveLetter })) : null,
-        m.openedAt && m.state === "open" ? el("span", { class: "muted small" }, `${t("masterSince")} `, ago(m.openedAt)) : null));
-      head.push(el("div", { class: "badges" },
-        badge(MASTER_STATE[m.state] || "idle", t(`ms_${m.state}`)),
-        m.state === "open" ? badge(MASTER_MACHINE[m.machineState ?? "none"] || "idle", t(`mm_${m.machineState ?? "none"}`)) : null));
-      parts.push(el("div", { class: "master-status" }, head));
+      parts.push(el("div", { class: "master-status well" },
+        m.driveLetter ? el("span", { class: "drive" }, `${m.driveLetter}:`) : null,
+        el("div", { class: "who" },
+          m.machineName ? el("b", {}, t("masterOnPc", { name: m.machineName, letter: m.driveLetter })) : null,
+          m.openedAt && m.state === "open" ? el("span", { class: "small muted" }, `${t("masterSince")} `, ago(m.openedAt)) : null),
+        el("div", { class: "badges" },
+          badge(MASTER_STATE[m.state] || "idle", t(`ms_${m.state}`)),
+          m.state === "open" ? badge(MASTER_MACHINE[m.machineState ?? "none"] || "idle", t(`mm_${m.machineState ?? "none"}`)) : null)));
     }
-    if (m.state === "closing") parts.push(el("p", { class: "hint-box" }, t("masterWaiting")));
+    if (m.state === "closing") parts.push(el("p", { class: "hint" }, t("masterWaiting")));
     if (m.lastError && m.state !== "open") parts.push(el("p", { class: "form-error" }, m.lastError));
     if (m.dirty && m.state === "closed") parts.push(el("p", { class: "banner warn" }, icon("alert"), el("span", {}, t("masterDirty"))));
 
@@ -773,11 +809,11 @@
     if (m.state === "closed") {
       const candidates = lib.masterCandidates ?? [];
       if (candidates.length === 0) {
-        parts.push(el("p", { class: "hint-box" }, t("masterNoCandidates")));
+        parts.push(el("p", { class: "hint" }, t("masterNoCandidates")));
       } else {
         const select = el("select", { class: "select", "aria-label": t("masterPc") }, candidates.map((c) =>
-          el("option", { value: c.id }, `№ ${c.number} · ${c.name}${c.online ? ` · ${t("online")}` : ""}`)));
-        actions.push(select, button(t("masterOpen"), { cls: "primary", ico: "unlock", onclick: () => libAct("/library/master/open", { machineId: select.value }) }));
+          el("option", { value: c.id }, `${pad(c.number)} · ${c.name}${c.online ? ` · ${t("online")}` : ""}`)));
+        actions.push(select, button(t("masterOpen"), { cls: "lilac", ico: "unlock", onclick: () => libAct("/library/master/open", { machineId: select.value }) }));
       }
     }
     if (m.state === "open") actions.push(button(t("masterFinish"), { cls: "primary", ico: "check", onclick: () => libAct("/library/master/close", {}) }));
@@ -788,7 +824,7 @@
       } }));
     }
     if (actions.length) parts.push(el("div", { class: "master-row" }, actions));
-    box.replaceChildren(el("div", { class: "master-body" }, parts));
+    box.replaceChildren(el("div", { style: { display: "flex", flexDirection: "column", gap: "16px" } }, parts));
 
     const blocked = m.state !== "closed";
     $("lib-publish-button").disabled = blocked;
@@ -796,10 +832,10 @@
   }
 
   function contentsCell(v) {
-    if (!v.contents) return el("td", { class: "muted small", title: t("libContentsHint") }, v.state === "published" ? t("libNoContents") : "");
+    if (!v.contents) return el("td", { class: "muted", title: t("libContentsHint") }, v.state === "published" ? t("libNoContents") : "");
     const details = el("details", { title: t("libContentsHint") },
       el("summary", {}, icon("chevron"), t("libFolders", { n: v.contents.length })),
-      el("div", { class: "folders" }, v.contents.map((name) => el("span", { class: "folder" }, icon("folder"), name))));
+      el("div", { class: "folders" }, v.contents.map((name) => el("span", { class: "folder" }, name))));
     details.open = openContents.has(v.label);
     details.addEventListener("toggle", () => { if (details.open) openContents.add(v.label); else openContents.delete(v.label); });
     return el("td", { class: "wrap" }, details);
@@ -813,16 +849,13 @@
 
     $("lib-summary").replaceChildren(...versionHero({
       title: t("libCurrentVersion"),
-      ico: "layers",
       current: lib.current?.label,
-      currentMeta: lib.current ? [
-        lib.current.publishedAt ? el("span", {}, `${t("libColPublished")}: `, ago(lib.current.publishedAt)) : null,
-        lib.current.mountedOn ? el("span", {}, t("onPcs", { n: lib.current.mountedOn })) : null,
-      ] : null,
+      lead: lib.current ? t("libHeroLine", { n: lib.current.mountedOn || 0 }) : t("libEmpty"),
+      meta: lib.current?.publishedAt ? [el("span", { class: "chip" }, `${t("libColPublished")}: `, ago(lib.current.publishedAt))] : null,
       rollback: lib.rollback?.label,
       rollbackLabel: t("libRollback"),
       onRollback: async () => {
-        if (await ask(t("libRollbackConfirm", { label: lib.rollback.label }), { ok: t("libRollback") })) libAct("/library/rollback", undefined, t("actionQueued"));
+        if (await ask(t("libRollbackConfirm", { label: lib.rollback.label }), { ok: t("libRollback") })) libAct("/library/rollback");
       },
     }));
 
@@ -843,24 +876,24 @@
     $("lib-empty").hidden = visible.length > 0;
     $("lib-rows").replaceChildren(...visible.map((v) => {
       const badges = [badge(LIB_STATE[v.state] || "idle", t(`ls_${v.state}`), v.lastError || "")];
-      if (v.role) badges.push(badge(v.role === "current" ? "accent" : "info", t(v.role === "current" ? "imgCurrent" : "imgRollback"), null, "plain"));
+      if (v.role) badges.push(badge(v.role === "current" ? "accent" : "info", t(v.role === "current" ? "imgCurrent" : "imgRollback"), null, "solid"));
       return el("tr", { class: v.state === "retired" ? "retired" : "" },
-        el("td", { class: "mono" }, el("b", {}, v.label)),
+        el("td", { class: "mono" }, v.label),
         el("td", {}, el("div", { class: "cell-stack" }, el("div", { class: "badges" }, badges), v.lastError ? el("span", { class: "field-error" }, v.lastError) : null)),
-        el("td", { class: "num" }, v.mountedOn ? el("span", { class: "seat-mini" }, v.mountedOn) : dash()),
+        el("td", {}, v.mountedOn ? el("span", { class: "seat-mini" }, v.mountedOn) : dash()),
         contentsCell(v),
         el("td", { class: "muted" }, v.publishedAt ? ago(v.publishedAt) : dash()),
-        el("td", { class: "mono small muted" }, orDash(v.targetIqn, true)));
+        el("td", { class: "mono muted" }, orDash(v.targetIqn, true)));
     }));
 
     if (libHistory) {
       $("lib-history").replaceChildren(...libHistory.map((op) => el("tr", {},
         el("td", { class: "muted" }, ago(op.createdAt)),
-        el("td", {}, el("b", {}, t(`op_${op.kind}`))),
+        el("td", {}, t(`op_${op.kind}`)),
         el("td", { class: "mono" }, orDash(op.versionLabel, true)),
         el("td", {}, el("div", { class: "badges" }, badge(OP_STATUS[op.status] || "idle", t(`os_${op.status}`), op.lastError || ""),
-          op.step && op.status !== "done" ? el("span", { class: "muted small" }, t(`step_${op.step}`)) : null)),
-        el("td", { class: "num" }, op.attempts),
+          op.step && op.status !== "done" ? el("span", { class: "small muted" }, t(`step_${op.step}`)) : null)),
+        el("td", { class: "mono" }, op.attempts),
         el("td", {}, op.status === "failed" ? el("div", { class: "row-actions" }, button(t("libRetry"), { cls: "sm", ico: "refresh", onclick: () => libAct(`/library/operations/${op.id}/retry`) })) : null))));
     }
   }
@@ -910,14 +943,14 @@
       await loadLibrary();
     } catch (error) {
       const key = `reason_${error.reason}`;
-      $("lib-publish-error").textContent = error.reason === "format" ? t("libLabelHint") : t(key) !== key ? t(key) : error.message;
+      $("lib-publish-error").textContent = error.reason === "format" ? t("libLabelHint") : has(key) ? t(key) : error.message;
       $("lib-publish-error").hidden = false;
     } finally {
       $("lib-publish-button").disabled = lib?.master ? lib.master.state !== "closed" : false;
     }
   }
 
-  // ---------- Образы Windows ----------
+  // ---------- Windows ----------
 
   const IMAGE_STATE = { importing: "info", ready: "ok", failed: "bad" };
 
@@ -935,13 +968,13 @@
     const current = imgs.images.find((i) => i.label === imgs.current);
     $("img-summary").replaceChildren(...versionHero({
       title: t("imgCurrentVersion"),
-      ico: "windows",
       current: imgs.current,
-      currentMeta: current ? [
-        current.sizeBytes ? el("span", {}, size(current.sizeBytes)) : null,
-        current.publishedAt ? el("span", {}, `${t("libColPublished")}: `, ago(current.publishedAt)) : null,
+      lead: current ? t("imgHeroLine") : t("imgEmpty"),
+      meta: current ? [
+        current.sizeBytes ? el("span", { class: "chip" }, size(current.sizeBytes)) : null,
+        current.publishedAt ? el("span", { class: "chip" }, `${t("libColPublished")}: `, ago(current.publishedAt)) : null,
         current.generalized === true ? badge("ok", t("gen_true")) : current.generalized === false ? badge("bad", t("gen_false")) : null,
-      ] : null,
+      ].filter(Boolean) : null,
       rollback: imgs.rollback,
       rollbackLabel: t("imgRollbackBtn"),
       onRollback: async () => {
@@ -955,11 +988,11 @@
     $("img-incoming-empty").hidden = imgs.incoming.length > 0 || !imgs.enabled;
     $("img-incoming").replaceChildren(...imgs.incoming.map((f) => {
       const suggested = f.name.replace(/\.(wim|esd)$/i, "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 40);
-      const label = el("input", { class: "mono", value: suggested, title: t("labelHint") });
-      const index = el("input", { type: "number", min: "1", value: "1" });
+      const label = el("input", { class: "input mono", value: suggested, title: t("labelHint") });
+      const index = el("input", { class: "input", type: "number", min: "1", value: "1" });
       const error = el("span", { class: "field-error" });
-      const submit = button(t("imgImport"), { type: "submit", cls: "primary", ico: "download" });
-      return el("form", { class: "incoming-item", onsubmit: async (e) => {
+      const submit = button(t("imgImport"), { type: "submit", cls: "lilac", ico: "download" });
+      return el("form", { class: "incoming-item well", onsubmit: async (e) => {
         e.preventDefault();
         error.textContent = "";
         submit.disabled = true;
@@ -970,15 +1003,15 @@
           await loadImages();
         } catch (err) {
           const key = `reason_${err.reason}`;
-          error.textContent = err.reason === "format" ? t("labelHint") : t(key) !== key ? t(key) : err.message;
+          error.textContent = err.reason === "format" ? t("labelHint") : has(key) ? t(key) : err.message;
         } finally {
           submit.disabled = false;
         }
       } },
-        el("div", { class: "file" }, el("span", { class: "ico-wrap accent" }, icon("file")),
-          el("div", {}, el("b", {}, f.name), el("span", { class: "muted small" }, size(f.sizeBytes), " · ", ago(f.modifiedAt)))),
-        el("label", { class: "field stacked label-f" }, el("span", {}, t("imgLabel")), label),
-        el("label", { class: "field stacked index-f" }, el("span", {}, t("imgIndex")), index),
+        el("div", { class: "file" }, el("span", { class: "file-ico" }, icon("file", "sm")),
+          el("div", {}, el("b", {}, f.name), el("span", { class: "small muted" }, size(f.sizeBytes), " · ", ago(f.modifiedAt)))),
+        el("label", { class: "field label-f" }, el("span", {}, t("imgLabel")), label),
+        el("label", { class: "field index-f" }, el("span", {}, t("imgIndex")), index),
         submit,
         error);
     }));
@@ -988,14 +1021,14 @@
     $("img-empty").hidden = imgs.images.length > 0;
     $("img-rows").replaceChildren(...imgs.images.map((i) => {
       const badges = [badge(IMAGE_STATE[i.state] || "idle", t(`is_${i.state}`), i.lastError || "")];
-      if (i.role) badges.push(badge(i.role === "current" ? "accent" : "info", t(i.role === "current" ? "imgCurrent" : "imgRollback"), null, "plain"));
+      if (i.role) badges.push(badge(i.role === "current" ? "accent" : "info", t(i.role === "current" ? "imgCurrent" : "imgRollback"), null, "solid"));
       if (i.generalized === true) badges.push(badge("ok", t("gen_true"), null, "plain"));
       if (i.generalized === false) badges.push(badge("bad", t("gen_false"), null, "plain"));
       const editions = i.wimImages.map((w) => el("div", { class: w.index === i.imageIndex ? "picked" : "" },
         `${w.index}. ${w.name}`, w.build ? ` · ${w.build}` : "", w.architecture ? ` · ${w.architecture}` : ""));
       const actions = [];
       if (i.state === "ready" && i.role !== "current") {
-        actions.push(button(t("imgPublish"), { cls: "soft sm", ico: "upload", onclick: async () => {
+        actions.push(button(t("imgPublish"), { cls: "sm", ico: "upload", onclick: async () => {
           if (await ask(t("imgPublishConfirm", { label: i.label }), { ok: t("imgPublish") })) imageAct(`/images/${encodeURIComponent(i.label)}/publish`, "POST");
         } }));
       }
@@ -1005,10 +1038,10 @@
         }, "danger"));
       }
       return el("tr", {},
-        el("td", { class: "mono" }, el("b", {}, i.label)),
+        el("td", { class: "mono" }, i.label),
         el("td", {}, el("div", { class: "cell-stack" }, el("div", { class: "badges" }, badges), i.lastError ? el("span", { class: "field-error" }, i.lastError) : null)),
         el("td", { class: "editions" }, editions.length ? editions : dash()),
-        el("td", { class: "num" }, size(i.sizeBytes)),
+        el("td", { class: "mono" }, size(i.sizeBytes)),
         el("td", { class: "mono muted", title: i.sha256 || "" }, i.sha256 ? `${i.sha256.slice(0, 12)}…` : dash()),
         el("td", {}, el("div", { class: "row-actions" }, actions)));
     }));
@@ -1025,13 +1058,13 @@
     $("bf-rows").replaceChildren(...files.map((f) => {
       const kind = f.status === "missing" && !f.required ? "idle" : BOOT_FILE[f.status] || "idle";
       const status = [badge(kind, t(`bf_${f.status}`), f.expected.length && f.status !== "ok" ? t("bfNotSecure") : "")];
-      if (!f.required) status.push(el("span", { class: "muted small" }, t("bfOptional")));
+      if (!f.required) status.push(el("span", { class: "small muted" }, t("bfOptional")));
       return el("tr", {},
-        el("td", { class: "mono" }, el("b", {}, f.name)),
-        el("td", {}, el("span", { class: "zone-tag" }, f.location === "tftp" ? "TFTP" : "HTTP")),
+        el("td", { class: "mono" }, f.name),
+        el("td", {}, el("span", { class: "chip" }, f.location === "tftp" ? "TFTP" : "HTTP")),
         el("td", {}, el("div", { class: "badges" }, status)),
-        el("td", { class: "small" }, f.signedBy.length ? f.signedBy.join(", ") : f.expected.length ? dash() : ""),
-        el("td", { class: "mono small" }, orDash(f.component, true)),
+        el("td", {}, f.signedBy.length ? f.signedBy.join(", ") : f.expected.length ? dash() : ""),
+        el("td", { class: "mono" }, orDash(f.component, true)),
         el("td", { class: "mono muted", title: f.sha256 || "" }, f.sha256 ? `${f.sha256.slice(0, 12)}…` : ""));
     }));
   }
@@ -1064,49 +1097,29 @@
     await loadImages();
   }
 
-  // ---------- Тема ----------
-
-  function applyTheme() {
-    if (theme === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-    const btn = $("theme");
-    btn.replaceChildren(icon({ auto: "auto", light: "sun", dark: "moon" }[theme] || "auto"));
-    btn.title = `${t("themeToggle")}: ${t(`theme_${theme}`)}`;
-    btn.setAttribute("aria-label", btn.title);
-  }
-
-  function cycleTheme() {
-    theme = { auto: "light", light: "dark", dark: "auto" }[theme] || "auto";
-    safeSet(localStorage, "panel.theme", theme === "auto" ? null : theme);
-    applyTheme();
-  }
-
   // ---------- Навигация ----------
 
   function renderHeader() {
-    $("page-title").textContent = t({ machines: "tabMachines", library: "tabLibrary", images: "tabImages", network: "tabNetwork" }[view]);
-    $("page-sub").textContent = t(`sub_${view}`);
-  }
-
-  function closeNav() {
-    $("app").classList.remove("nav-open");
-    $("scrim").hidden = true;
+    $("page-title").textContent = t({ machines: "navHall", library: "navGames", images: "navWindows", network: "navNetwork" }[view]);
+    $("page-eyebrow").textContent = t(`sub_${view}`);
   }
 
   function route() {
     view = { "#network": "network", "#images": "images", "#library": "library" }[location.hash] ?? "machines";
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+    document.querySelectorAll(".rail-item").forEach((item) => {
+      const on = item.dataset.view === view;
+      item.classList.toggle("active", on);
+      if (on) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
+    });
     renderHeader();
-    closeNav();
     if (!token) return;
     for (const name of VIEWS) $(name).hidden = view !== name;
-    if (view === "images") { imgsJson = ""; }
-    if (view === "library") { libJson = ""; }
+    if (view === "images") imgsJson = "";
+    if (view === "library") libJson = "";
     if (view === "network") {
       netJson = "";
       loadSettings(false);
     }
-    $("app").querySelector(".main").scrollTo?.(0, 0);
     window.scrollTo(0, 0);
     refresh();
   }
@@ -1151,7 +1164,7 @@
 
   function openEdit(machine) {
     editing = machine;
-    $("edit-sub").textContent = [machine.hostname, machine.ipAddress].filter(Boolean).join(" · ");
+    $("edit-sub").textContent = [`${t("seat")} ${pad(machine.number)}`, machine.hostname, machine.ipAddress].filter(Boolean).join(" · ");
     $("edit-number").value = machine.number;
     $("edit-name").value = machine.name;
     $("edit-zone").replaceChildren(...data.zones.map((z) => el("option", { value: z.id }, z.name)));
@@ -1246,7 +1259,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     applyStaticTexts();
     document.querySelectorAll("[data-lang]").forEach((select) => select.addEventListener("change", (e) => setLang(e.target.value)));
-    $("theme").addEventListener("click", cycleTheme);
+    $("lang").addEventListener("click", () => setLang(LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]));
     $("login-form").addEventListener("submit", login);
     $("logout").addEventListener("click", logout);
     $("refresh").addEventListener("click", () => {
@@ -1257,8 +1270,6 @@
       dataJson = ""; libJson = ""; imgsJson = ""; netJson = "";
       refresh();
     });
-    $("menu").addEventListener("click", () => { $("app").classList.add("nav-open"); $("scrim").hidden = false; });
-    $("scrim").addEventListener("click", closeNav);
     $("edit-form").addEventListener("submit", saveEdit);
     $("net-form").addEventListener("submit", saveNetwork);
     $("net-form").addEventListener("input", () => { formDirty = true; $("net-saved").hidden = true; });
@@ -1269,24 +1280,14 @@
     document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
     $("confirm-no").addEventListener("click", () => $("confirm").close(""));
     $("confirm-yes").addEventListener("click", (e) => { e.preventDefault(); $("confirm").close("yes"); });
-
-    $("m-search").addEventListener("input", (e) => { filters.text = e.target.value; renderRows(); });
-    $("m-zone").addEventListener("change", (e) => { filters.zone = e.target.value; renderRows(); });
-    $("m-view").addEventListener("click", (e) => {
-      const mode = e.target.closest("button")?.dataset.mode;
-      if (!mode) return;
-      filters.mode = mode;
-      safeSet(localStorage, "panel.mode", mode);
-      renderFilters();
-      renderRows();
-    });
+    $("m-search").addEventListener("input", (e) => { filters.text = e.target.value; renderFloor(); });
+    $("m-admit").addEventListener("click", () => $("pending").scrollIntoView({ behavior: "smooth", block: "center" }));
     document.addEventListener("keydown", (e) => {
-      if (e.key === "/" && !anyDialogOpen() && view === "machines" && document.activeElement?.tagName !== "INPUT") {
+      if (e.key === "/" && !anyDialogOpen() && view === "machines" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
         e.preventDefault();
         $("m-search").focus();
       }
     });
-
     window.addEventListener("hashchange", route);
     if (token) showApp(); else logout();
   });
